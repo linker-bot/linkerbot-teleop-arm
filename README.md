@@ -1,8 +1,8 @@
-## LinkerTA V2 快速上手指南
+## Linkerhand-tele-arm快速上手指南
 
 
 ### 一、描述
-* LinkerTA 是由灵心巧手（北京）科技有限公司开发，用于第二版遥操臂的驱动程序。 
+* Linkerhand-tele-arm (LinkerTA) 是由灵心巧手（北京）科技有限公司开发，用于第二版遥操臂的驱动程序。 
 
 ### 二、环境要求
 * 系统版本：Ubuntu 20.04以上
