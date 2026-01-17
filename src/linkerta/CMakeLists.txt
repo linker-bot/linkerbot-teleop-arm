@@ -142,3 +142,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/include)
         COMPONENT Development
     )
 endif()
+
+#-----------------------------------------------------------------------------
+# 测试支持
+#-----------------------------------------------------------------------------
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(test)
+    message(STATUS "Testing enabled")
+endif()

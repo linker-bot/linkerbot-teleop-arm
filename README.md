@@ -215,14 +215,24 @@ linkerhand-tele-arm/
 │       │   └── lta.yaml          # 配置文件
 │       ├── launch/
 │       │   └── run.launch.py     # ROS2 启动文件
-│       └── src/
-│           ├── CanBus.h          # CAN 总线接口
-│           ├── CanBus.cpp        # CAN 总线实现
-│           ├── LinkerArm.h       # 遥操臂接口
-│           ├── LinkerArm.cpp     # 遥操臂实现
-│           ├── main.cpp          # 非 ROS2 主程序
-│           └── main_ros2.cpp     # ROS2 主程序
+│       ├── src/
+│       │   ├── CanBus.h          # CAN 总线接口
+│       │   ├── CanBus.cpp        # CAN 总线实现
+│       │   ├── LinkerArm.h       # 遥操臂接口
+│       │   ├── LinkerArm.cpp     # 遥操臂实现
+│       │   ├── main.cpp          # 非 ROS2 主程序
+│       │   └── main_ros2.cpp     # ROS2 主程序
+│       └── test/                 # 测试目录
+│           ├── CMakeLists.txt    # 测试构建配置
+│           ├── test_canbus.cpp   # CanBus 单元测试
+│           ├── test_linkerarm.cpp # LinkerArm 单元测试
+│           └── mock_canbus.h     # Mock 对象定义
+├── docs/
+│   ├── FAQ.md                    # 常见问题
+│   ├── TROUBLESHOOTING.md        # 故障排查
+│   └── TESTING.md                # 测试文档
 ├── build.sh                      # 构建脚本
+├── test.sh                       # 测试脚本
 ├── startup.sh                    # 启动脚本
 ├── .clang-format                 # 代码格式配置
 ├── .clang-tidy                   # 代码质量配置
@@ -258,6 +268,29 @@ colcon build --cmake-args -DUSE_ROS2=ON
 - `USE_ROS2`: 启用 ROS2 支持（默认: OFF）
 - `BUILD_TESTING`: 启用测试（默认: OFF）
 - `CMAKE_BUILD_TYPE`: 构建类型（Release/Debug，默认: Release）
+
+## 🧪 测试
+
+项目包含完整的单元测试框架，使用 Google Test 进行测试。
+
+### 运行测试
+
+```bash
+# 运行所有测试
+./test.sh
+
+# 生成代码覆盖率报告
+./test.sh --coverage
+
+# 显示详细输出
+./test.sh --verbose
+```
+
+### 测试覆盖率
+
+项目目标测试覆盖率 > 80%，核心功能覆盖率 > 90%。
+
+查看详细测试文档：[测试文档](docs/TESTING.md)
 
 ## 🔧 故障排查
 
