@@ -117,3 +117,14 @@ if(LINKERTA_TEST_VCAN_INTERFACE)
     target_compile_definitions(run_vcan_tests PRIVATE LINKERTA_TEST_VCAN_INTERFACE="${LINKERTA_TEST_VCAN_INTERFACE}")
     gtest_discover_tests(run_vcan_tests DISCOVERY_MODE PRE_TEST)
 endif()
+
+if(LINKERTA_BUILD_BENCHMARKS)
+    add_executable(run_benchmark_tests test_benchmark.cpp)
+    target_link_libraries(run_benchmark_tests PRIVATE linkerta_benchmark_options GTest::gtest_main)
+    gtest_discover_tests(run_benchmark_tests DISCOVERY_MODE PRE_TEST)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME benchmark-synthetic-contract
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/verify_benchmark.py
+            $<TARGET_FILE:linkerta_benchmark>)
+    set_tests_properties(benchmark-synthetic-contract PROPERTIES TIMEOUT 30)
+endif()

@@ -98,3 +98,23 @@ jobs:
       - run: ctest --test-dir build-vcan --output-on-failure --no-tests=error --timeout 60
       - if: always()
         run: sudo ip link delete vcan-test || true
+
+  synthetic-benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S src/linkerta -B build-bench -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DLINKERTA_BUILD_BENCHMARKS=ON
+      - run: cmake --build build-bench --parallel 2
+      - run: ctest --test-dir build-bench --output-on-failure --no-tests=error --timeout 90
+      - name: Record explicitly synthetic baseline
+        run: ./build-bench/linkerta_benchmark --simulate --count 100 --rate-hz 20 --timeout-ms 250 --output synthetic.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-baseline-${{ matrix.os }}
+          path: |
+            synthetic.csv
+            synthetic.csv.metadata.json

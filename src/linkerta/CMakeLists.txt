@@ -180,6 +180,28 @@ install(EXPORT linkertaTargets NAMESPACE linkerta::
     DESTINATION ${LINKERTA_CONFIG_DESTINATION})
 install(DIRECTORY test/consumer/ DESTINATION ${CMAKE_INSTALL_DATADIR}/linkerta/examples/consumer)
 
+# Optional measurement harness; synthetic output is explicitly marked as such.
+option(LINKERTA_BUILD_BENCHMARKS "Build the explicit opt-in measurement harness" OFF)
+if(LINKERTA_BUILD_BENCHMARKS)
+    add_library(linkerta_benchmark_options STATIC tools/BenchmarkOptions.cpp)
+    target_include_directories(linkerta_benchmark_options PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+    add_executable(linkerta_benchmark tools/benchmark.cpp)
+    target_link_libraries(linkerta_benchmark PRIVATE linkerta_core linkerta_benchmark_options)
+    set_target_properties(linkerta_benchmark PROPERTIES INSTALL_RPATH "${LINKERTA_BINARY_RPATH}")
+    find_package(Git QUIET)
+    set(LINKERTA_BUILD_REVISION "unknown")
+    if(GIT_FOUND)
+        execute_process(COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_CURRENT_SOURCE_DIR} rev-parse HEAD
+            OUTPUT_VARIABLE LINKERTA_BUILD_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    endif()
+    if(NOT LINKERTA_BUILD_REVISION MATCHES "^[0-9a-f]+$")
+        set(LINKERTA_BUILD_REVISION "unknown")
+    endif()
+    target_compile_definitions(linkerta_benchmark PRIVATE LINKERTA_BUILD_REVISION="${LINKERTA_BUILD_REVISION}")
+    install(TARGETS linkerta_benchmark RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 #-----------------------------------------------------------------------------
 # 测试支持
 #-----------------------------------------------------------------------------
