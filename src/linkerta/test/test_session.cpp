@@ -134,7 +134,7 @@ class GatedTransmitError : public linkerbot::can::TransportIOError {
 public:
     explicit GatedTransmitError(std::shared_ptr<DiagnosticGate> gate)
         : TransportIOError("gated transmit failure"), gate_(std::move(gate)) {}
-    const char *what() const noexcept override {
+    [[nodiscard]] const char *what() const noexcept override {
         // The dispatcher inspects first; the Session worker inspects second.
         if (gate_->inspections.fetch_add(1) == 1) {
             std::unique_lock<std::mutex> lock(gate_->mutex);

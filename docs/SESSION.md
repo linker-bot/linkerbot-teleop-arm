@@ -14,7 +14,7 @@ an oversized classic transmit message is rejected before it reaches the socket.
 
 CMake first searches for an installed `linkerbot-comm` package (0.3 or compatible).
 Otherwise it fetches the repository at commit
-`338a4668eab6debfb8ed1c3d7ee12c3239f77caf`. Dependency tests, examples and
+`e514b832e09ecd60a56d2c67e39c54285793fff8`. Dependency tests, examples and
 benchmarks are not part of the driver's build.
 
 For a network-free source build provide:
