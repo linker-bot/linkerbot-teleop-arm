@@ -1,0 +1,4 @@
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+find_dependency(linkerbot-comm 0.3 CONFIG)
+include("${CMAKE_CURRENT_LIST_DIR}/linkertaTargets.cmake")
