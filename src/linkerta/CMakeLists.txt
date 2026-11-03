@@ -47,7 +47,7 @@ if(NOT TARGET linkerbot::comm)
     set(LINKERBOT_COMM_BUILD_BENCHMARKS OFF)
     FetchContent_Declare(linkerbot_transport
         GIT_REPOSITORY https://github.com/soulteary/linkerbot-transport-cpp.git
-        GIT_TAG c54a0fdc390f7940177d3a7533d333cc5df5a36a
+        GIT_TAG 338a4668eab6debfb8ed1c3d7ee12c3239f77caf
     )
     FetchContent_MakeAvailable(linkerbot_transport)
 endif()

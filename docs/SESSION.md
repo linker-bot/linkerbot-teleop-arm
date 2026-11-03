@@ -14,7 +14,7 @@ an oversized classic transmit message is rejected before it reaches the socket.
 
 CMake first searches for an installed `linkerbot-comm` package (0.3 or compatible).
 Otherwise it fetches the repository at commit
-`c54a0fdc390f7940177d3a7533d333cc5df5a36a`. Dependency tests, examples and
+`338a4668eab6debfb8ed1c3d7ee12c3239f77caf`. Dependency tests, examples and
 benchmarks are not part of the driver's build.
 
 For a network-free source build provide:
@@ -26,7 +26,9 @@ For a network-free source build provide:
 ```
 
 Alternatively install the dependency first and set `CMAKE_PREFIX_PATH` to its
-installation prefix. Missing dependencies fail configuration when downloads are
+installation prefix. Installed packages must include the Session error-publication fix
+from the pinned revision; the consumer regression verifies this ordering.
+Missing dependencies fail configuration when downloads are
 disabled; they are never silently replaced with the old socket implementation.
 
 ## Contracts

@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: soulteary/linkerbot-transport-cpp
-          ref: c54a0fdc390f7940177d3a7533d333cc5df5a36a
+          ref: 338a4668eab6debfb8ed1c3d7ee12c3239f77caf
           path: build-dependency-src
       - run: sudo apt-get update && sudo apt-get install -y libgtest-dev
       - name: Build and install the pinned transport package

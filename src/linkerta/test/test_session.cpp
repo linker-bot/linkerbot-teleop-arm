@@ -1,7 +1,10 @@
+#include <atomic>
+#include <condition_variable>
 #include <future>
 #include <gtest/gtest.h>
 #include <linkerbot/can/fake_transport.hpp>
 #include <linkerbot/transport/session.hpp>
+#include <mutex>
 
 using namespace std::chrono_literals;
 namespace {
@@ -112,5 +115,64 @@ TEST(SessionIntegration, ClosingInboxWakesReceiverWithoutClosingSession) {
     waiting.get();
     EXPECT_TRUE(rig.session->health().open);
     EXPECT_NO_THROW(rig.session->subscribe_routes({{0x65, false}}));
+}
+
+struct DiagnosticGate {
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::atomic<unsigned> inspections{0};
+    bool entered = false;
+    bool released = false;
+    void release() {
+        std::lock_guard<std::mutex> lock(mutex);
+        released = true;
+        cv.notify_all();
+    }
+};
+
+class GatedTransmitError : public linkerbot::can::TransportIOError {
+public:
+    explicit GatedTransmitError(std::shared_ptr<DiagnosticGate> gate)
+        : TransportIOError("gated transmit failure"), gate_(std::move(gate)) {}
+    const char *what() const noexcept override {
+        // The dispatcher inspects first; the Session worker inspects second.
+        if (gate_->inspections.fetch_add(1) == 1) {
+            std::unique_lock<std::mutex> lock(gate_->mutex);
+            gate_->entered = true;
+            gate_->cv.notify_all();
+            gate_->cv.wait(lock, [&] { return gate_->released; });
+        }
+        return TransportIOError::what();
+    }
+
+private:
+    std::shared_ptr<DiagnosticGate> gate_;
+};
+
+TEST(SessionIntegration, FailureReceiptWaitsForExceptionDiagnostics) {
+    auto gate = std::make_shared<DiagnosticGate>();
+    auto fake = std::make_unique<FakeTransport>();
+    fake->on_request(
+        0x300, [gate](const Message &) -> std::vector<Message> { throw GatedTransmitError(gate); });
+    auto session = Session::own(std::move(fake));
+    struct ReleaseDiagnostic {
+        std::shared_ptr<DiagnosticGate> gate;
+        ~ReleaseDiagnostic() {
+            gate->release();
+        }
+    } release{gate};
+    auto receipt = session->submit({{frame(0x300)}});
+    {
+        std::unique_lock<std::mutex> lock(gate->mutex);
+        ASSERT_TRUE(gate->cv.wait_for(lock, 1s, [&] { return gate->entered; }));
+    }
+    // The caller must not rethrow/destroy the exception while the worker still
+    // reads it for diagnostics. This also checks installed dependency packages.
+    EXPECT_FALSE(receipt.completed());
+    gate->release();
+    EXPECT_THROW((void)receipt.wait_until(linkerbot::transport::Clock::now() + 1s),
+                 linkerbot::can::TransportIOError);
+    EXPECT_EQ(session->health().last_error, "gated transmit failure");
+    session->close();
 }
 } // namespace
