@@ -1,6 +1,8 @@
 #ifndef LINKER_ARM_H
 #define LINKER_ARM_H
 
+#include <atomic>
+
 #include "CanBus.h"
 #include <chrono>
 #include <cmath>
