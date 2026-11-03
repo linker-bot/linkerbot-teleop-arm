@@ -2,6 +2,7 @@
 import math
 import os
 import signal
+import sys
 import time
 import unittest
 
@@ -19,6 +20,18 @@ from std_srvs.srv import SetBool, Trigger
 
 @pytest.mark.launch_test
 def generate_test_description():
+    # Humble has no KeepAliveProc action. Keep the launch service active until
+    # the test runner finishes its assertions and requests shutdown. This guard
+    # waits for that signal instead of racing fixture exit against test cleanup.
+    guard = launch.actions.ExecuteProcess(
+        cmd=[sys.executable, "-c",
+             "import signal; "
+             "signal.signal(signal.SIGINT, lambda *_: None); "
+             "signal.signal(signal.SIGTERM, lambda *_: None); "
+             "signal.pause()"],
+        name="launch_test_guard",
+        output="screen",
+    )
     fixture = launch.actions.ExecuteProcess(
         cmd=[launch.substitutions.LaunchConfiguration("fixture_path"),
              "--ros-args", "-p", "poll_rate_hz:=20.0",
@@ -28,6 +41,7 @@ def generate_test_description():
     )
     return launch.LaunchDescription([
         launch.actions.DeclareLaunchArgument("fixture_path"),
+        guard,
         fixture,
         launch_testing.actions.ReadyToTest(),
     ]), {"fixture": fixture}
