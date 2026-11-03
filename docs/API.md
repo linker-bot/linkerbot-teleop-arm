@@ -9,7 +9,7 @@
 - `readJointState(timeout)` 发起一次请求，等待四块完整的新快照；默认 250 ms。超时、发送失败、断线或需要身份重验时抛异常。等待请求槽、发送和接收共用该请求的 deadline。
 - `latestSnapshot()` 复制缓存并检查 Session 状态和路由溢出，不发查询。必须检查 `valid` 与 `isFresh(now, max_age)`；超时后缓存可能仍是上一份有效快照，因此不能把缓存当作新测量。
 - `getJointPosition()` 是兼容包装，会发起 `readJointState()`，返回度数。
-- `getJointErrorCode()` 只复制缓存故障布尔值，不带有效性；新代码应同时读取快照的 `fault_valid`，避免把未知误认成正常。
+- `getJointErrorCode()` 只复制缓存故障布尔值，不带有效性；新代码应同时读取快照的 `fault_valid`，避免把未知误认成正常。位置、故障值和有效性应从同一份 `ArmSnapshot` 读取，不要组合两次读取的结果。
 - `getVersion()` 返回受锁保护的已接收版本字符串，尚未收到时为空；不是同步的版本查询。版本编码限制见协议指南。
 - `lastError()` 返回当前错误文本，不是完整错误历史。
 
@@ -45,7 +45,7 @@ int main() {
 
 同一 Session 的标准 ID `0x64..0x68` 精确路由不能被第二个 arm 同时占用；不同 endpoint 名称不会解除路由冲突。自建接口/发现构造函数持有其 Session 的生命周期。
 
-所有权不是自动恢复许可：只有显式拥有 Session 的 arm 可以调用 `recover(timeout)`。恢复重建路由、清空旧状态并等待版本回复。外部拥有者恢复共享 Session 后，旧 arm 必须重建，不能继续发布旧 generation 的数据。
+所有权不是自动恢复许可：只有显式拥有 Session 的 arm 可以调用 `recover(timeout)`。恢复还要求 Session 具备可重建连接的工厂；`Session::own()` 没有该工厂，即使 `own_session=true` 也不能物理恢复。显式关闭的 Session 不能用 recovery 重开。成功恢复后重建路由、清空旧状态并等待版本回复。外部拥有者恢复共享 Session 后，旧 arm 必须重建，不能继续发布旧 generation 的数据。
 
 ## 并发与退出
 

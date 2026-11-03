@@ -52,4 +52,4 @@ ros2 run linkerta linkerta_node --ros-args --params-file /absolute/path/lta.yaml
 ros2 service call /linkerta_node/calibrate_once std_srvs/srv/Trigger '{}'
 ```
 
-一次被接受的请求就消耗本进程的机会，发送失败也不重试。`success=false` 在这里包括“已排队但无法确认设备执行”的情况，必须读取 `message` 和诊断；没有完成 ACK，不能把它当作普通成功/失败事务。节点重启会重置进程内次数限制，但不会自动标定；外部调用方不得因响应为 false 自动重试。
+一次被接受的请求就消耗本进程的机会，发送失败也不重试。`success=false` 在这里包括“已排队但无法确认设备执行”的情况，必须读取 `message` 和诊断；当前未实现或验证设备完成 ACK，不能把它当作普通成功/失败事务。节点重启会重置进程内次数限制，但不会自动标定；外部调用方不得因响应为 false 自动重试。

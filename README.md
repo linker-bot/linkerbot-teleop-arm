@@ -78,7 +78,7 @@ source /opt/ros/humble/setup.bash
 模拟时钟暂停、倍率和跳变会影响映射；负值钳制为零。
 
 `~/calibrate_once` 使用 `std_srvs/srv/Trigger`。只有显式允许时才排队一次命令，每个进程最多尝试一次，
-即使发送失败也不自动重试。由于协议没有完成 ACK，响应 `success=false` 并在 message/诊断说明状态；
+即使发送失败也不自动重试。由于当前未实现或验证设备完成 ACK，响应 `success=false` 并在 message/诊断说明状态；
 它不等于设备标定成功。重启不会自动发送标定。
 
 ## 协议、测试和限制
