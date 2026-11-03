@@ -88,3 +88,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clan
         )
     endif()
 endif()
+
+if(USE_ROS2)
+    add_executable(run_ros2_tests test_ros2_node.cpp)
+    target_link_libraries(run_ros2_tests PRIVATE linkerta_ros GTest::gtest_main)
+    ament_target_dependencies(run_ros2_tests rclcpp sensor_msgs diagnostic_msgs std_srvs)
+    gtest_discover_tests(run_ros2_tests DISCOVERY_MODE PRE_TEST)
+    add_executable(ros2_test_fixture ros2_test_fixture.cpp)
+    target_link_libraries(ros2_test_fixture PRIVATE linkerta_ros)
+    ament_target_dependencies(ros2_test_fixture rclcpp std_msgs std_srvs)
+    find_package(launch_testing_ament_cmake REQUIRED)
+    add_launch_test(test_ros2_launch.py
+        ARGS "fixture_path:=$<TARGET_FILE:ros2_test_fixture>"
+        TIMEOUT 60)
+
+endif()

@@ -1,4 +1,11 @@
 linkerta_node:
   ros__parameters:
-    calibration: 0                                                        # 仅允许0；启动时标定已禁用，避免自动重启重复归零           从安装目录加载配置；修改后重启生效
-    negation: [-1, -1, -1, -1, -1, -1, -1, -1, 1, -1, 1, -1, -1, -1]      # 用于改关节输出方向             从安装目录加载配置；修改后重启生效
+    calibration: 0 # Startup calibration is forbidden.
+    can_interface: "" # Empty discovers master_arm; otherwise open a preconfigured CAN interface.
+    poll_rate_hz: 100.0
+    request_timeout_ms: 250
+    max_snapshot_age_ms: 250
+    publish_legacy_topics: true
+    allow_calibration: false
+    calibration_joint: 255 # 0..13 or 255 (all); used only by explicit service calls.
+    negation: [-1, -1, -1, -1, -1, -1, -1, -1, 1, -1, 1, -1, -1, -1]

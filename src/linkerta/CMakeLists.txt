@@ -90,30 +90,17 @@ if(USE_ROS2)
     find_package(rclcpp REQUIRED)
     find_package(std_msgs REQUIRED)
     find_package(sensor_msgs REQUIRED)
+    find_package(diagnostic_msgs REQUIRED)
+    find_package(std_srvs REQUIRED)
     
-    add_executable(linkerta_node
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/main_ros2.cpp
-    )
-    
-    target_link_libraries(linkerta_node
-        linkerta_core
-        rclcpp::rclcpp
-    )
-    
-    target_include_directories(linkerta_node PUBLIC
-        ${rclcpp_INCLUDE_DIRS}
-        ${std_msgs_INCLUDE_DIRS}
-    )
-    
-    # 设置目标属性
-    set_target_properties(linkerta_node PROPERTIES
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
-    )
-    
-    ament_target_dependencies(linkerta_node rclcpp std_msgs sensor_msgs)
-    
+    add_library(linkerta_ros src/TeleArmNode.cpp)
+    target_link_libraries(linkerta_ros PUBLIC linkerta_core)
+    ament_target_dependencies(linkerta_ros rclcpp std_msgs sensor_msgs diagnostic_msgs std_srvs)
+
+    add_executable(linkerta_node src/main_ros2.cpp)
+    target_link_libraries(linkerta_node PRIVATE linkerta_ros)
+    ament_target_dependencies(linkerta_node rclcpp)
+
 endif()
 
 #-----------------------------------------------------------------------------
