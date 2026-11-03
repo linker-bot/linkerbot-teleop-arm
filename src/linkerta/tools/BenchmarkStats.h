@@ -16,7 +16,7 @@ inline std::optional<std::uint64_t> percentile(std::vector<std::uint64_t> sample
     if (samples.empty())
         return std::nullopt;
     std::sort(samples.begin(), samples.end());
-    const auto rank = static_cast<std::size_t>(std::ceil(p * samples.size()));
+    const auto rank = static_cast<std::size_t>(std::ceil(p * static_cast<double>(samples.size())));
     return samples[rank - 1];
 }
 } // namespace LinkerArm::Benchmark

@@ -18,6 +18,9 @@ Cppcheck uses its GoogleTest model plus a small `TEST_F` definition that preserv
 derived-fixture member scope. Ten negative controls check test bodies, assertion
 operands and fatal-assertion flow. The wrapper keeps raw XML in the artifact so
 configuration errors in dependency headers remain available for diagnosis.
+The database builder also probes the actual compiler for standard-library version
+macros. This lets Cppcheck select the same ROS2 library-specific branches without
+guessing macro values or suppressing preprocessor errors.
 
 The gate requires a complete full-mode report and zero findings from all configured
 tools. Tool failures, incomplete analysis and diagnostics fail the job. Do not lower
