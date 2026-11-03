@@ -161,6 +161,35 @@ TEST_F(RosNodeTest, PublishesRadiansAndCompatibleDegreesWithOneTimestamp) {
     executor.remove_node(observer);
 }
 
+TEST_F(RosNodeTest, PausedSimulationClockProducesZeroRatherThanNegativeTimestamp) {
+    RosArmRig rig;
+    auto driver =
+        std::make_shared<LinkerArm::TeleArmNode>(options({{"use_sim_time", true}}), rig.arm);
+    auto observer = std::make_shared<rclcpp::Node>("paused_clock_observer");
+    std::vector<sensor_msgs::msg::JointState> standard, left, right;
+    auto s = observer->create_subscription<sensor_msgs::msg::JointState>(
+        "/joint_states", 10,
+        [&](sensor_msgs::msg::JointState::ConstSharedPtr msg) { standard.push_back(*msg); });
+    auto l = observer->create_subscription<sensor_msgs::msg::JointState>(
+        "/left_arm_joint_control", 10,
+        [&](sensor_msgs::msg::JointState::ConstSharedPtr msg) { left.push_back(*msg); });
+    auto r = observer->create_subscription<sensor_msgs::msg::JointState>(
+        "/right_arm_joint_control", 10,
+        [&](sensor_msgs::msg::JointState::ConstSharedPtr msg) { right.push_back(*msg); });
+    executor.add_node(driver);
+    executor.add_node(observer);
+    ASSERT_TRUE(spinUntil([&] { return !standard.empty() && !left.empty() && !right.empty(); }));
+    EXPECT_EQ(driver->now().nanoseconds(), 0);
+    for (const auto *messages : {&standard, &left, &right}) {
+        for (const auto &message : *messages) {
+            EXPECT_EQ(message.header.stamp.sec, 0);
+            EXPECT_EQ(message.header.stamp.nanosec, 0u);
+        }
+    }
+    executor.remove_node(driver);
+    executor.remove_node(observer);
+}
+
 TEST_F(RosNodeTest, TimeoutReportsErrorAndNeverRepublishesCachedPositions) {
     RosArmRig rig;
     auto driver = std::make_shared<LinkerArm::TeleArmNode>(options(), rig.arm);
