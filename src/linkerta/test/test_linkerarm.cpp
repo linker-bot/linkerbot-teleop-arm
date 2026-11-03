@@ -131,14 +131,14 @@ TEST(LinkerArmTest, VersionParsing) {
     EXPECT_EQ(patch, 3);
     
     // 测试另一个版本号
-    version[0] = 456; // 4.5.6
+    version[0] = 200; // uint8_t wire value, decodes as 2.0.0
     major = version[0] / 100;
     minor = (version[0] % 100) / 10;
     patch = version[0] % 10;
     
-    EXPECT_EQ(major, 4);
-    EXPECT_EQ(minor, 5);
-    EXPECT_EQ(patch, 6);
+    EXPECT_EQ(major, 2);
+    EXPECT_EQ(minor, 0);
+    EXPECT_EQ(patch, 0);
 }
 
 // 测试：错误码解析逻辑

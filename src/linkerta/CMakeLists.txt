@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.18)
 project(linkerta
     VERSION 0.0.1
     LANGUAGES CXX
@@ -34,7 +34,7 @@ endif()
 # 构建选项
 #-----------------------------------------------------------------------------
 option(USE_ROS2 "Build with ROS2 support" OFF)
-option(BUILD_TESTING "Build the testing tree" OFF)
+option(BUILD_TESTING "Build the testing tree" ON)
 
 message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "Version: ${PROJECT_VERSION}")
