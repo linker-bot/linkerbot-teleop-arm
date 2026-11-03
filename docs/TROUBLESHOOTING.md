@@ -1,448 +1,91 @@
-# 故障排查指南
+# 故障排查
 
-本文档提供 Linkerhand-Tele-Arm 常见问题的排查和解决方案。
+先保留完整错误消息、提交版本和启动参数，再按下列路径缩小问题。
+不要关闭编译警告、跳过测试或重复标定来掩盖错误。
 
-## 目录
+## 配置或构建失败
 
-- [编译问题](#编译问题)
-- [运行时问题](#运行时问题)
-- [通信问题](#通信问题)
-- [ROS2 问题](#ros2-问题)
-- [配置问题](#配置问题)
-- [性能问题](#性能问题)
-- [获取帮助](#获取帮助)
+检查工具链和实际选择的构建模式：
 
----
-
-## 编译问题
-
-### 问题：找不到 CMake 或版本过低
-
-**错误信息**:
-```
-CMake 3.15 or higher is required
+```sh
+cmake --version
+./build.sh core
 ```
 
-**解决方案**:
-1. 更新 CMake：
-   ```bash
-   sudo apt-get update
-   sudo apt-get install cmake
-   ```
+需要 CMake 3.18+、C++17 和线程支持。仅 ROS2 模式需要 ament、colcon 及 ROS 消息包；
+先 `source /opt/ros/humble/setup.bash`，再 `./build.sh ros2`。
+当前验证的是 Humble，不要混用其他 ROS 安装前缀。
 
-2. 或从源码安装最新版本：
-   ```bash
-   wget https://cmake.org/files/v3.27/cmake-3.27.0.tar.gz
-   tar -xzf cmake-3.27.0.tar.gz
-   cd cmake-3.27.0
-   ./bootstrap && make && sudo make install
-   ```
+找不到 `linkerbot-comm` 时，确认固定依赖能下载，或在离线环境安装依赖并正确设置
+`CMAKE_PREFIX_PATH`。找不到 GoogleTest 时检查测试依赖，不要取消测试作为修复。
+使用 `find_package` 的下游要指向安装前缀，而非源码或旧 build 目录。
+安装和干净目录消费说明见 [INSTALL.md](INSTALL.md)。
 
----
+编译器报错或警告应保留第一处完整诊断、编译器版本和构建命令。
+项目已链接 Threads；不要先修改链接参数或降低警告等级。
 
-### 问题：找不到 pthread 库
+## 进程立即退出或无法打开接口
 
-**错误信息**:
-```
-undefined reference to `pthread_*`
-```
+CLI 参数错误会在硬件打开前拒绝；运行 `linkerta --help` 核对参数。
+ROS2 参数同样先验证，尤其检查 `calibration` 必须为 0、方向数组长度和值、
+频率和超时范围。空 `can_interface` 会走设备发现；多个候选设备时应显式选择接口。
 
-**解决方案**:
-1. 安装 pthread 开发库：
-   ```bash
-   sudo apt-get install libpthread-stubs0-dev
-   ```
+只读检查系统接口：
 
-2. 确认 CMakeLists.txt 中已链接 Threads：
-   ```cmake
-   find_package(Threads REQUIRED)
-   target_link_libraries(linkerta PRIVATE Threads::Threads)
-   ```
-
----
-
-### 问题：ROS2 模式下找不到 ament_cmake
-
-**错误信息**:
-```
-Could not find ament_cmake
+```sh
+ip -details link show can0
+ip -s link show can0
 ```
 
-**解决方案**:
-1. 确认已安装 ROS2：
-   ```bash
-   sudo apt-get install ros-humble-ament-cmake
-   ```
+接口不存在、未启用或 bitrate 不匹配时，由管理员按设备配置在停机窗口处理，
+见安装指南。业务节点不负责提权或配置接口。SocketCAN 不是 `/dev/tty*` 串口；
+不要把 `dialout` 组、chmod 或长期 sudo 运行当作通用修复。
+若存在权限错误，应保留 errno 并核实容器网络命名空间、设备可见性和系统安全策略。
 
-2. 确认已 source ROS2 环境：
-   ```bash
-   source /opt/ros/humble/setup.bash
-   ```
+## 节点存在但位置话题无数据
 
-3. 使用 colcon 构建：
-   ```bash
-   colcon build --cmake-args -DUSE_ROS2=ON
-   ```
-
----
-
-### 问题：编译警告过多
-
-**解决方案**:
-1. 检查代码是否符合规范：
-   ```bash
-   clang-format -i src/**/*.{cpp,h}
-   clang-tidy src/**/*.{cpp,h}
-   ```
-
-2. 调整 CMakeLists.txt 中的警告级别（如果需要）
-
----
-
-## 运行时问题
-
-### 问题：无法打开 CAN 设备
-
-**错误信息**:
-```
-Cannot open CAN device: can0
+```sh
+ros2 node list
+ros2 node info /linkerta_node
+ros2 topic echo /diagnostics
+ros2 topic echo /joint_states
 ```
 
-**可能原因**:
-1. CAN 设备未启动
-2. 权限不足
-3. 设备不存在
+先确认发现的是预期节点和接口。`/joint_states` 是弧度；旧控制话题是度，且可能被
+`publish_legacy_topics=false` 关闭。收到不完整、超时或陈旧响应时不发布位置是预期行为。
+不能用旧缓存持续发布来“恢复频率”。
 
-**解决方案**:
-1. **启动 CAN 设备**:
-   ```bash
-   sudo ip link set can0 up type can bitrate 1000000
-   ```
+检查总线计数、电源、布线、bitrate 和终端条件；必要时使用已安装的 can-utils
+执行 `candump can0` 只读抓帧。保存原始帧并对照 [PROTOCOL.md](PROTOCOL.md) 的 ID、
+DLC 与标志位规则。六字节旧格式缺少故障位时应显示 unknown。
+四帧没有已确认的设备周期号，不能从主机到达顺序断言同步采样。
 
-2. **检查设备状态**:
-   ```bash
-   ip link show can0
-   ifconfig can0
-   ```
+## 配置变更没有生效
 
-3. **检查设备是否存在**:
-   ```bash
-   ip link show
-   ```
+`ros2 launch` 通常读取安装 share 目录。用 `ros2 pkg prefix linkerta` 核对选中的包，
+确认没有 source 旧工作区。修改源码 YAML 后重新安装配置，或用
+`--ros-args --params-file /absolute/path/lta.yaml` 指定文件。
+这些参数只在启动时读取；运行时设参被拒绝属于接口契约，不需要修改源码解除限制。
 
-4. **检查权限**:
-   ```bash
-   # 可能需要将用户添加到 dialout 组
-   sudo usermod -a -G dialout $USER
-   # 重新登录后生效
-   ```
+## 标定返回 false、结果不确定
 
----
+先读服务 response.message 和 `/diagnostics`。默认禁用、已消耗一次机会、排队待发送和
+发送结果不确定的含义不同。由于没有设备完成 ACK，即使命令已发出也不返回确认成功。
+不要将 `calibration` 改成 1，不要用自动重启或重复服务调用当作恢复措施。
+保持设备安全状态，由操作者按设备规程确认是否已执行；详见 [SAFETY.md](SAFETY.md)。
 
-### 问题：程序启动后立即退出
+## 超时、溢出或资源增长
 
-**可能原因**:
-1. CAN 设备未正确初始化
-2. 配置文件路径错误
-3. 参数配置错误
+先记录当前请求频率、超时、CPU/内存负载和 CAN 错误计数。可通过启动参数降低请求频率，
+而非修改代码 sleep 或提权改变线程优先级。增大超时前应查清缺帧和总线错误原因。
 
-**解决方案**:
-1. **检查 CAN 设备**:
-   ```bash
-   ip link show can0
-   ```
+记录进程 RSS、线程和 fd 数的时间趋势，区分启动预热与持续增长。短期回归见
+[TESTING.md](TESTING.md)，手动长期采样见 [SOAK.md](SOAK.md)。模拟工具见
+[BENCHMARK.md](BENCHMARK.md)，其结果不能证明实机稳定性。
 
-2. **检查配置文件**:
-   ```bash
-   ls -la src/linkerta/config/lta.yaml
-   cat src/linkerta/config/lta.yaml
-   ```
+## 提交问题时附带什么？
 
-3. **查看程序日志**:
-   - 检查终端输出
-   - 检查 ROS2 日志（如果使用 ROS2 模式）
-
----
-
-### 问题：无法读取关节数据
-
-**可能原因**:
-1. CAN 通信失败
-2. 设备未响应
-3. 数据解析错误
-
-**解决方案**:
-1. **检查 CAN 通信**:
-   ```bash
-   # 使用 can-utils 工具测试
-   sudo apt-get install can-utils
-   candump can0
-   ```
-
-2. **检查设备连接**:
-   - 确认 CAN 线缆连接正确
-   - 检查设备电源
-
-3. **检查波特率**:
-   ```bash
-   # 确认波特率匹配
-   ip link show can0
-   ```
-
----
-
-## 通信问题
-
-### 问题：CAN 总线错误
-
-**错误信息**:
-```
-CAN bus error: ...
-```
-
-**可能原因**:
-1. 总线负载过高
-2. 硬件故障
-3. 波特率不匹配
-
-**解决方案**:
-1. **检查总线负载**:
-   ```bash
-   ip -s link show can0
-   # 查看错误统计
-   ```
-
-2. **检查硬件**:
-   - 检查 CAN 线缆
-   - 检查终端电阻（120Ω）
-   - 检查设备连接
-
-3. **调整波特率**:
-   ```bash
-   sudo ip link set can0 down
-   sudo ip link set can0 up type can bitrate 1000000
-   ```
-
----
-
-### 问题：数据延迟或丢失
-
-**可能原因**:
-1. 系统负载过高
-2. CAN 总线负载过高
-3. 线程优先级问题
-
-**解决方案**:
-1. **检查系统负载**:
-   ```bash
-   top
-   htop
-   ```
-
-2. **检查 CAN 总线统计**:
-   ```bash
-   ip -s link show can0
-   ```
-
-3. **优化程序**:
-   - 减少不必要的日志输出
-   - 调整线程优先级（需要 root 权限）
-
----
-
-## ROS2 问题
-
-### 问题：找不到 ROS2 节点
-
-**错误信息**:
-```
-Package 'linkerta' not found
-```
-
-**解决方案**:
-1. **确认已构建 ROS2 包**:
-   ```bash
-   colcon build --cmake-args -DUSE_ROS2=ON
-   ```
-
-2. **source 环境**:
-   ```bash
-   source install/setup.bash
-   ```
-
-3. **检查包是否存在**:
-   ```bash
-   ros2 pkg list | grep linkerta
-   ```
-
----
-
-### 问题：话题无数据
-
-**可能原因**:
-1. 节点未运行
-2. 话题名称错误
-3. 节点崩溃
-
-**解决方案**:
-1. **检查节点状态**:
-   ```bash
-   ros2 node list
-   ros2 node info /linkerta_node
-   ```
-
-2. **检查话题**:
-   ```bash
-   ros2 topic list
-   ros2 topic echo /left_arm_joint_control
-   ```
-
-3. **检查节点日志**:
-   ```bash
-   ros2 run linkerta linkerta_node
-   ```
-
----
-
-### 问题：Launch 文件无法启动
-
-**错误信息**:
-```
-[ERROR] [launch]: process has died
-```
-
-**解决方案**:
-1. **检查配置文件路径**:
-   ```bash
-   ros2 pkg prefix linkerta
-   # 确认配置文件路径正确
-   ```
-
-2. **手动运行节点**:
-   ```bash
-   ros2 run linkerta linkerta_node
-   # 查看具体错误信息
-   ```
-
-3. **检查参数**:
-   ```bash
-   # 验证配置文件格式
-   cat src/linkerta/config/lta.yaml
-   ```
-
----
-
-## 配置问题
-
-### 问题：配置更改不生效
-
-**可能原因**:
-1. 未重新编译
-2. 配置文件路径错误
-3. 缓存问题
-
-**解决方案**:
-1. **重新编译**:
-   ```bash
-   ./build.sh
-   # 或
-   colcon build --cmake-args -DUSE_ROS2=ON
-   ```
-
-2. **检查配置文件路径**:
-   - 非 ROS2 模式：代码中硬编码路径
-   - ROS2 模式：`src/linkerta/config/lta.yaml`
-
-3. **清理构建缓存**:
-   ```bash
-   rm -rf build install log
-   ./build.sh
-   ```
-
----
-
-### 问题：标定失败
-
-**可能原因**:
-1. 关节未到达刻度线
-2. 标定参数错误
-3. 通信问题
-
-**解决方案**:
-1. **确认关节位置**:
-   - 确保所有关节都到达刻度线位置
-
-2. **检查配置**:
-   ```yaml
-   calibration: 1  # 必须为 1
-   ```
-
-3. **重新标定**:
-   - 重启程序
-   - 等待标定完成
-   - 将 `calibration` 改回 `0` 并重新编译
-
----
-
-## 性能问题
-
-### 问题：CPU 使用率过高
-
-**可能原因**:
-1. 循环频率过高
-2. 日志输出过多
-3. 线程阻塞
-
-**解决方案**:
-1. **调整循环频率**:
-   - 检查代码中的 sleep 时间
-   - 优化数据读取频率
-
-2. **减少日志输出**:
-   - 关闭调试日志
-   - 使用条件编译
-
-3. **优化线程**:
-   - 检查线程同步
-   - 避免死锁
-
----
-
-### 问题：内存泄漏
-
-**解决方案**:
-1. **使用内存检测工具**:
-   ```bash
-   valgrind --leak-check=full ./linkerta
-   ```
-
-2. **检查代码**:
-   - 确保所有 new 都有对应的 delete
-   - 使用智能指针
-
----
-
-## 获取帮助
-
-如果以上方案无法解决您的问题，请：
-
-1. **查看日志**:
-   - 程序输出
-   - ROS2 日志
-   - 系统日志
-
-2. **收集信息**:
-   - 错误信息
-   - 系统信息（`uname -a`）
-   - ROS2 版本（`ros2 --version`）
-   - 配置文件内容
-
-3. **寻求帮助**:
-   - 查看 [FAQ.md](FAQ.md)
-   - 查看 [README.md](../README.md)
-   - 提交 GitHub Issue
-   - 联系技术支持：[https://linkerbot.cn/aboutUs](https://linkerbot.cn/aboutUs)
-
----
-
-**最后更新**: 2026
+提供提交 SHA、OS/内核、编译器、ROS_DISTRO、构建和运行命令、去除敏感信息的参数、
+完整错误日志、适配器和固件标识、只读接口状态，以及最小可复现步骤。
+若附基准 CSV，请同时附 metadata，并保留 synthetic 标志和失败样本。
+不要只附平均延迟、截图或“重启后好了”的结论。

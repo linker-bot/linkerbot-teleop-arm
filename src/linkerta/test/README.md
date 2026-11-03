@@ -1,13 +1,41 @@
-# 测试快速参考
+# Test quick reference
 
-从项目根目录执行 `./test.sh`。测试调用实际协议解码器、快照组装器和 Session；内存传输使用依赖提供的 FakeTransport。
+From the repository root, `./test.sh` configures, builds and runs the hardware-free
+core tests. It does not enable ROS2 or vcan. Use [the testing guide](../../../docs/TESTING.md)
+for build options and [the build guide](../../../docs/INSTALL.md) for dependencies.
+The tests call the production codec, assembler and Session-backed arm; they do
+not replace the driver with a second protocol implementation.
 
-- `test_protocol.cpp`：协议长度、角度与完整快照；保留 PR3 的回归用例。
-- `test_runtime.cpp`：实际 Session 上的读取、超时、恢复和生命周期。
-- `test_session.cpp`：路由、队列、取消与共享会话所有权。
-- `test_canbus_io.cpp`：实际 SocketCAN 后端的 Linux datagram socket 测试。
-- `test_node_config.cpp`：参数与启动标定保护。
+- `test_protocol.cpp`: reply lengths and flags, angle boundaries, version bytes,
+  four-block assembly, duplicates, skew, cutoffs, generation and freshness.
+- `test_runtime.cpp`: fresh versus cached reads, deadline accounting, concurrency,
+  send failures, overflow, sharing, recovery and no calibration replay.
+- `test_session.cpp`: exact routes, bounded queues, cancellation, shared ownership
+  and the dependency's exception-publication ordering regression.
+- `test_canbus_io.cpp`: the dependency's real SocketCAN codec/I/O paths over adopted
+  Linux datagram sockets. These are not physical CAN devices.
+- `test_node_config.cpp` and `test_cli.cpp`: parameter and argument validation,
+  startup-calibration rejection, help and numeric boundaries.
+- `test_lifecycle.cpp`: repeated Session/arm create-read-close cycles; Linux also
+  checks process thread and file-descriptor counts after teardown.
+- `consumer/` and `install_consumer.cmake.in`: install and relocate the package,
+  run installed CLI help, then build and execute an independent `find_package`
+  consumer using the installed public headers and `linkerta::core`.
+- `test_ros2_node.cpp`, `ros2_test_fixture.cpp` and `test_ros2_launch.py`: enabled
+  only with `USE_ROS2=ON`; exercise the actual node, executor, topics, units,
+  timestamps, diagnostics, calibration guard and shutdown with FakeTransport.
+- `test_vcan.cpp`: opt-in real SocketCAN integration on an explicitly supplied,
+  preconfigured Linux vcan interface. The test never configures one itself.
+- `test_benchmark.cpp` and `verify_benchmark.py`: enabled only with
+  `LINKERTA_BUILD_BENCHMARKS=ON`; validate benchmark options and synthetic output.
 
-测试不要求真实 CAN 硬件；Linux 专属 socket 用例在其他平台不注册。物理 ACK、bus-off、固件及标定成功仍需台架验证。
+CTest must find tests and must report failures. ROS2 tests additionally require a
+sourced ROS2 environment and the declared package dependencies. vcan testing is
+selected with `-DLINKERTA_TEST_VCAN_INTERFACE=<name>` after external setup; normal
+core tests need neither root nor CAN hardware. Sanitizer and architecture coverage
+comes from the CI matrix, not from running `./test.sh` once.
 
-详细说明见 [测试文档](../../../docs/TESTING.md) 与 [Session 契约](../../../docs/SESSION.md)。
+No suite here proves physical acknowledgment, bus-off recovery, firmware timing
+or completed calibration. FakeTransport and synthetic benchmark measurements are
+not real-device performance data. See [the Session contract](../../../docs/SESSION.md)
+and [the manual soak procedure](../../../docs/SOAK.md).

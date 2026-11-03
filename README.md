@@ -4,6 +4,8 @@
 核心复用 linkerbot-transport-cpp Session；协议解码和四帧快照组装不依赖 ROS。
 Linux 支持 SocketCAN 硬件；macOS 用于核心构建与测试。ROS2 CI 验证 Humble。
 
+完整导航见 [文档索引](docs/README.md)，接口与证据分别见 [C++ API](docs/API.md)、[ROS2](docs/ROS2.md) 和 [验证边界](docs/VALIDATION.md)。
+
 ## 构建和安装
 
 完整说明见 [安装与部署](docs/INSTALL.md)。从仓库根目录执行：
@@ -26,7 +28,7 @@ const auto snapshot = arm.readJointState();
 // snapshot.positions_degrees 是完整快照，单位为度；超时会抛出异常。
 ```
 
-头文件安装路径以实际导出接口为准；其他 API 与生命周期见 [Session 迁移契约](docs/SESSION.md)。
+头文件安装在 `<prefix>/include/linkerta`；其他 API 与生命周期见 [C++ API](docs/API.md) 和 [Session 迁移契约](docs/SESSION.md)。
 `latestSnapshot()` 只读缓存，调用方必须检查 `valid` 和 `isFresh()`；首次未就绪的零值不是测量。
 
 ## 配置 CAN 和命令行
