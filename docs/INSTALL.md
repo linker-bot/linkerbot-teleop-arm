@@ -46,12 +46,10 @@ linkerta --interface can0 --bitrate 1000000 --rate-hz 10 --timeout-ms 250 --coun
 旧调用 `linkerta can0 1000000` 保留兼容。bitrate 参数不会配置操作系统接口。
 位置输出以度为单位，必须取得完整新快照；失败通过非零退出码报告。
 
-## 契约和许可证
+## 数据单位与许可证
 
 标准 ROS `/joint_states` 使用弧度；旧左右控制话题继续使用度，并可禁用。
 核心库位置使用度。协议长度、未知故障位和版本编码限制见 [PROTOCOL.md](PROTOCOL.md)。
 标定当前未实现或验证设备完成 ACK，不自动重放，不能把后端接受发送等同于设备完成。
 
-本仓库 package.xml 声明 Apache-2.0，但当前未提供顶层 LICENSE 正文；
-分发前需维护者补齐许可证文件。linkerbot-transport-cpp 的 LICENSE 为 MIT；
-GoogleTest 为 BSD-3-Clause，仅测试使用。随二进制分发依赖时应保留其许可证和声明。
+项目的 [Apache-2.0 许可证](../LICENSE)和[第三方声明](../THIRD_PARTY_NOTICES.md)会随安装保存在 `<prefix>/share/licenses/linkerta`。分发二进制时请保留这个目录。transport 的 MIT 和 GoogleTest 的 BSD-3-Clause 原文位于 [LICENSES](../LICENSES)；GoogleTest 只用于测试，不链接进驱动。
