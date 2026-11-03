@@ -5,6 +5,11 @@ routing, a bounded inbox and the single transmit scheduler. `ArmProtocol` and
 `SnapshotAssembler` remain device-specific, portable components. Classic CAN is
 selected explicitly; enabling CAN FD on an adapter is not compatible by default.
 
+The imported SocketCAN decoder normalizes native classic frame lengths to the
+eight-byte payload capacity. The driver validates the resulting device message
+against the unchanged protocol contract. RX normalization is distinct from TX:
+an oversized classic transmit message is rejected before it reaches the socket.
+
 ## Dependency
 
 CMake first searches for an installed `linkerbot-comm` package (0.3 or compatible).

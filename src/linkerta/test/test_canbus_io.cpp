@@ -53,8 +53,16 @@ TEST_F(SocketCanIo, EmptyFrameIsInitializedAndLengthBounded) {
         EXPECT_EQ(byte, 0);
     wire.can_id = 0x65;
     wire.can_dlc = 9;
+    wire.data[7] = 0x5a;
     ASSERT_EQ(write(peer, &wire, sizeof(wire)), sizeof(wire));
-    EXPECT_THROW((void)bus->read(), linkerbot::can::ValidationError);
+    // The imported decoder bounds native classic DLC to eight payload bytes.
+    // Protocol invalid-length checks remain independently covered.
+    const auto received = bus->read();
+    ASSERT_TRUE(received);
+    EXPECT_EQ(received->dlc, 8);
+    EXPECT_EQ(received->data[7], 0x5a);
+    for (std::size_t i = 8; i < received->data.size(); ++i)
+        EXPECT_EQ(received->data[i], 0);
 }
 TEST_F(SocketCanIo, FiltersRemoteErrorAndPreservesExtendedIdentity) {
     for (const uint32_t flag : {CAN_RTR_FLAG, CAN_ERR_FLAG}) {
