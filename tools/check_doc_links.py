@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check tracked and new Markdown relative file links offline (not remote URLs/anchors)."""
+"""Check local Markdown file links, language pairs and executable examples offline."""
 from pathlib import Path
 import re
 import subprocess
@@ -28,7 +28,35 @@ for name in sorted(set(paths)):
         if not destination.exists():
             line = content.count("\n", 0, match.start()) + 1
             errors.append(f"{name}:{line}: missing local target {target}")
+def examples(path):
+    blocks = re.findall(r"```[^\n]*\n(.*?)```", path.read_text(encoding="utf-8"), re.S)
+    # Translated full-line comments may differ; commands and C++ directives may not.
+    return ["\n".join(line for line in block.splitlines()
+                      if not line.lstrip().startswith(("//", "# ")))
+            for block in blocks]
+
+pairs = [(root / "README.md", root / "README.zh-CN.md"),
+         (root / "THIRD_PARTY_NOTICES.md", root / "THIRD_PARTY_NOTICES.zh-CN.md"),
+         (root / "src/linkerta/test/README.md", root / "src/linkerta/test/README.zh-CN.md")]
+for english in sorted((root / "docs").glob("*.md")):
+    pairs.append((english, root / "docs/zh" / english.name))
+for chinese in sorted((root / "docs/zh").glob("*.md")):
+    if not (root / "docs" / chinese.name).is_file():
+        errors.append(f"Orphan Chinese guide: {chinese.relative_to(root)}")
+for english, chinese in pairs:
+    if not english.is_file() or not chinese.is_file():
+        errors.append(f"Missing language pair: {english.relative_to(root)} / {chinese.relative_to(root)}")
+        continue
+    for source, target in [(english, chinese), (chinese, english)]:
+        # Check the actual relative destination, not the display language label.
+        links = re.findall(r"\[[^\]]*\]\(([^)]+)\)", source.read_text(encoding="utf-8"))
+        if not any((source.parent / link).resolve() == target.resolve() for link in links
+                   if not urlsplit(link).scheme and not link.startswith("#")):
+            errors.append(f"Missing language switch: {source.relative_to(root)} -> {target.relative_to(root)}")
+    if examples(english) != examples(chinese):
+        errors.append(f"Examples differ between {english.relative_to(root)} and {chinese.relative_to(root)}")
+
 if errors:
     print("\n".join(errors), file=sys.stderr)
     sys.exit(1)
-print(f"Checked local file links in {len(set(paths))} Markdown files (remote URLs and anchors excluded).")
+print(f"Checked {len(set(paths))} Markdown files and {len(pairs)} language pairs; remote URLs and anchors excluded.")

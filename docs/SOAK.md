@@ -1,5 +1,7 @@
 # Run an eight-hour hardware soak
 
+[简体中文](zh/SOAK.md)
+
 Use a dedicated bench. Record the adapter, firmware, bitrate, termination, power
 supply, host load, Git commits, kernel and compiler. Configure CAN outside the
 process and start at a request rate already validated on that device. The

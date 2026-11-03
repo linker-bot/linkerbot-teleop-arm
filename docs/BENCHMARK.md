@@ -1,5 +1,7 @@
 # Measuring query latency
 
+[简体中文](zh/BENCHMARK.md)
+
 Build `linkerta_benchmark` to record query results and latency. It uses the
 existing polling implementation and does not configure CAN, calibrate joints or
 recover the transport. Synthetic mode runs `LinkerArm` and Session through

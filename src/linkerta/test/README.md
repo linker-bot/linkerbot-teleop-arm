@@ -1,5 +1,7 @@
 # Test quick reference
 
+[简体中文](README.zh-CN.md)
+
 From the repository root, `./test.sh` configures, builds and runs the hardware-free
 core tests. It does not enable ROS2 or vcan. Use [the testing guide](../../../docs/TESTING.md)
 for build options and [the build guide](../../../docs/INSTALL.md) for dependencies.
