@@ -1,8 +1,40 @@
 #include "LinkerArm.h"
 #include <algorithm>
 #include <iostream>
+#include <optional>
 #include <sstream>
 namespace LinkerArm {
+// Keep the queue wait bounded without a platform-specific timed-mutex path.
+// The gate mutex protects only ownership bookkeeping, never transport I/O.
+class LinkerArm::RequestLease {
+public:
+    explicit RequestLease(LinkerArm &arm,
+                          std::optional<Protocol::TimePoint> deadline = std::nullopt)
+        : arm_(arm) {
+        std::unique_lock<std::mutex> lock(arm_.request_mutex_);
+        const auto available = [&] { return !arm_.request_active_; };
+        if (deadline) {
+            if (!arm_.request_available_.wait_until(lock, *deadline, available))
+                throw std::runtime_error("joint request queue timeout");
+        } else {
+            arm_.request_available_.wait(lock, available);
+        }
+        arm_.request_active_ = true;
+    }
+    ~RequestLease() {
+        {
+            std::lock_guard<std::mutex> lock(arm_.request_mutex_);
+            arm_.request_active_ = false;
+        }
+        arm_.request_available_.notify_one();
+    }
+    RequestLease(const RequestLease &) = delete;
+    RequestLease &operator=(const RequestLease &) = delete;
+
+private:
+    LinkerArm &arm_;
+};
+
 LinkerArm::LinkerArm(std::string device)
     : LinkerArm(std::make_unique<Communication::CanBus>(device)) {}
 LinkerArm::LinkerArm(const std::string &channel, int bitrate)
@@ -36,9 +68,7 @@ Protocol::ArmSnapshot LinkerArm::readJointState(std::chrono::milliseconds timeou
     if (now.time_since_epoch() > Protocol::Clock::duration::max() - wait)
         throw std::invalid_argument("timeout exceeds the deadline range");
     const auto deadline = now + wait;
-    std::unique_lock<std::timed_mutex> request(request_mutex_, std::defer_lock);
-    if (!request.try_lock_until(deadline))
-        throw std::runtime_error("joint request queue timeout");
+    RequestLease request(*this, deadline);
     std::unique_lock<std::mutex> lock(state_mutex_);
     auto sequence = assembler_.latest().sequence;
     assembler_.beginCycle(std::chrono::steady_clock::now());
@@ -98,7 +128,7 @@ std::string LinkerArm::lastError() {
 void LinkerArm::resetZero(uint8_t joint) {
     if (joint != 0xFF && joint >= 14)
         throw std::invalid_argument("joint must be 0..13 or 255");
-    std::lock_guard<std::timed_mutex> request(request_mutex_);
+    RequestLease request(*this);
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
         pending_query_ = false;

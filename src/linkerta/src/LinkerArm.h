@@ -37,12 +37,15 @@ public:
     void printJointInfo();
 
 private:
+    class RequestLease;
     void receiveResponse();
     std::unique_ptr<Communication::ICanBus> bus_;
     std::atomic<bool> running_{true};
     std::thread reader_;
     std::mutex state_mutex_;
-    std::timed_mutex request_mutex_;
+    std::mutex request_mutex_;
+    std::condition_variable request_available_;
+    bool request_active_ = false;
     std::condition_variable updated_;
     Protocol::SnapshotAssembler assembler_;
     std::vector<uint8_t> version_;

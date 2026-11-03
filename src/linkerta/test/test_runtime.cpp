@@ -142,3 +142,35 @@ TEST(Runtime, RejectsUnrepresentableTimeoutBeforeSending) {
     EXPECT_THROW(arm.readJointState(std::chrono::milliseconds::max()), std::invalid_argument);
     EXPECT_EQ(raw->queries, 0);
 }
+
+TEST(Runtime, QueuedRequestProceedsAfterPrecedingTimeout) {
+    auto fake = std::make_unique<Fake>();
+    auto *raw = fake.get();
+    fake->respond = false;
+    LinkerArm::LinkerArm arm(std::move(fake));
+    auto first = std::async(std::launch::async,
+                            [&] { EXPECT_THROW(arm.readJointState(100ms), std::runtime_error); });
+    {
+        std::unique_lock<std::mutex> lock(raw->mutex);
+        ASSERT_TRUE(raw->cv.wait_for(lock, 1s, [&] { return raw->queries == 1; }));
+        raw->respond = true;
+    }
+    EXPECT_TRUE(arm.readJointState(1s).valid);
+    first.get();
+}
+
+TEST(Runtime, FailedWriteReleasesRequestSlot) {
+    auto fake = std::make_unique<Fake>();
+    auto *raw = fake.get();
+    LinkerArm::LinkerArm arm(std::move(fake));
+    {
+        std::lock_guard<std::mutex> lock(raw->mutex);
+        raw->fail = true;
+    }
+    EXPECT_THROW(arm.readJointState(), std::runtime_error);
+    {
+        std::lock_guard<std::mutex> lock(raw->mutex);
+        raw->fail = false;
+    }
+    EXPECT_TRUE(arm.readJointState().valid);
+}
