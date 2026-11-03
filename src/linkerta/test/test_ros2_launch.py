@@ -1,5 +1,7 @@
 """Exercise a launched production node with only the transport replaced by a test fixture."""
 import math
+import os
+import signal
 import time
 import unittest
 
@@ -32,7 +34,7 @@ def generate_test_description():
 
 
 class TestLaunchedNode(unittest.TestCase):
-    def test_publication_timeout_and_disabled_calibration(self):
+    def test_publication_timeout_and_disabled_calibration(self, proc_info, fixture):
         rclpy.init()
         node = rclpy.create_node("launch_contract_observer")
         samples, legacy, diagnostics, calibration_counts = [], [], [], []
@@ -85,6 +87,12 @@ class TestLaunchedNode(unittest.TestCase):
             stopped_count = len(samples)
             spin_for(0.3)
             self.assertEqual(len(samples), stopped_count)
+
+            # Exercise the real process signal handler and worker teardown, not
+            # only launch's default SIGINT cleanup after the test has finished.
+            proc_info.assertWaitForStartup(process=fixture, timeout=5)
+            os.kill(fixture.process_details["pid"], signal.SIGTERM)
+            proc_info.assertWaitForShutdown(process=fixture, timeout=5)
         finally:
             for subscription in subscriptions:
                 node.destroy_subscription(subscription)

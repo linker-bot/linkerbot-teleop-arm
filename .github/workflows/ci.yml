@@ -75,3 +75,18 @@ jobs:
             -DFETCHCONTENT_FULLY_DISCONNECTED=ON
           cmake --build build-installed --parallel 2
           ctest --test-dir build-installed --output-on-failure --no-tests=error --timeout 60
+
+  vcan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure isolated virtual CAN interface
+        run: |
+          sudo modprobe vcan
+          sudo ip link add dev vcan-test type vcan
+          sudo ip link set vcan-test up
+      - run: cmake -S src/linkerta -B build-vcan -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DLINKERTA_TEST_VCAN_INTERFACE=vcan-test
+      - run: cmake --build build-vcan --parallel 2
+      - run: ctest --test-dir build-vcan --output-on-failure --no-tests=error --timeout 60
+      - if: always()
+        run: sudo ip link delete vcan-test || true

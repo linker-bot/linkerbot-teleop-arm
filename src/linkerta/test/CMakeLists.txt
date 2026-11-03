@@ -24,7 +24,7 @@ include_directories(
 )
 
 # 测试源文件
-set(TEST_SOURCES test_cli.cpp test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp test_session.cpp)
+set(TEST_SOURCES test_lifecycle.cpp test_cli.cpp test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp test_session.cpp)
 add_executable(run_tests ${TEST_SOURCES})
 
 # 查找Threads库
@@ -106,3 +106,14 @@ endif()
 
 add_test(NAME cli-help COMMAND linkerta --help)
 set_tests_properties(cli-help PROPERTIES PASS_REGULAR_EXPRESSION "Usage: linkerta")
+
+set(LINKERTA_TEST_VCAN_INTERFACE "" CACHE STRING "Explicit preconfigured vcan interface for integration tests")
+if(LINKERTA_TEST_VCAN_INTERFACE)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT LINKERTA_TEST_VCAN_INTERFACE MATCHES "^[a-zA-Z0-9_-]+$")
+        message(FATAL_ERROR "vcan tests require Linux and a simple interface name")
+    endif()
+    add_executable(run_vcan_tests test_vcan.cpp)
+    target_link_libraries(run_vcan_tests PRIVATE linkerta_core GTest::gtest_main)
+    target_compile_definitions(run_vcan_tests PRIVATE LINKERTA_TEST_VCAN_INTERFACE="${LINKERTA_TEST_VCAN_INTERFACE}")
+    gtest_discover_tests(run_vcan_tests DISCOVERY_MODE PRE_TEST)
+endif()

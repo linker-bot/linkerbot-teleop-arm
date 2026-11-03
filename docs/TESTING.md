@@ -13,3 +13,17 @@ The transport dependency can be supplied offline with
 Session integration tests use the dependency's real Session and FakeTransport:
 routing, queue bounds, cancellation and external ownership are exercised in
 addition to the unchanged device codec and snapshot suite. See [SESSION.md](SESSION.md).
+
+## Lifecycle regression and long-running verification
+
+`Lifecycle.RepeatedCreateReadCloseReleasesResources` warms up the runtime, then
+creates, reads from and closes 40 real Session/LinkerArm instances using
+FakeTransport. Linux records a stable `/proc/self/task` baseline and compares
+both task and fd counts exactly after the loop, allowing a bounded wait for
+kernel thread teardown but no count tolerance. Other platforms still exercise
+the lifecycle loop without Linux procfs assertions.
+
+This short simulation catches retained resources; it does not demonstrate
+eight-hour stability or physical CAN behavior. The pending manual procedure in
+[SOAK.md](SOAK.md) requires actual device metadata, raw observations and explicit
+results. No eight-hour soak result is claimed by this CI test.
