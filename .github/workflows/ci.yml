@@ -31,7 +31,7 @@ jobs:
     container: ros:humble-ros-base
     steps:
       - uses: actions/checkout@v4
-      - run: apt-get update && apt-get install -y python3-colcon-common-extensions ros-humble-sensor-msgs libgtest-dev libgmock-dev
+      - run: apt-get update && apt-get install -y python3-colcon-common-extensions ros-humble-sensor-msgs ros-humble-diagnostic-msgs ros-humble-std-srvs ros-humble-launch-testing-ament-cmake libgtest-dev libgmock-dev
       - shell: bash
         run: |
           source /opt/ros/humble/setup.bash

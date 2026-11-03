@@ -410,3 +410,35 @@ The driver uses `linkerbot-transport-cpp` through its `linkerbot::comm` CMake ta
 An installed package is preferred; the source fallback is pinned to a commit.
 For dependency setup, shared-Session ownership and cancellation semantics see
 [Session integration](docs/SESSION.md).
+
+## ROS2 interface (PR5)
+
+The executor runs a wall timer at `poll_rate_hz` (1–200 Hz, default 100).
+This is a request scheduling limit, not a promise of hardware sample frequency:
+a request can take up to `request_timeout_ms` (1–10000 ms, default 250).
+Only newly completed, valid snapshots within `max_snapshot_age_ms` (default 250)
+are published. Timeouts do not republish the previous positions. ROS timestamps approximate host reception time: publication-time ROS `now()`
+minus snapshot age measured with the steady clock. They are not device-clock
+or measured device sample timestamps. A paused, scaled, or jumping simulated
+ROS clock affects this mapping; negative results are clamped to zero. Messages
+derived from one snapshot share the same timestamp.
+
+`/joint_states` uses radians for all fourteen joints. Existing
+`/left_arm_joint_control` and `/right_arm_joint_control` topics retain degrees
+and can be disabled with `publish_legacy_topics:=false`. Direction corrections
+use the same fourteen-entry `negation` map on both interfaces. Diagnostics
+report missing/stale snapshots and transport failures; unknown firmware fault
+bits must not be interpreted as a healthy joint.
+
+Set `can_interface` to an already configured interface such as `can0`, or leave
+it empty for device discovery. The node does not configure the operating system
+CAN interface. Parameters are validated before opening hardware and are read-only
+while running; edit the YAML or launch overrides and restart to change them.
+
+Startup calibration remains forbidden (`calibration` must be zero), including
+when launch respawns a failed node. An operator may explicitly enable
+`allow_calibration` and invoke the node's Trigger calibration service; the
+configured `calibration_joint` selects 0–13 or 255 for all joints. Each accepted
+call submits one command without automatic retries or replay after recovery.
+A transport receipt confirms submission only: the protocol has no confirmed
+calibration-completion acknowledgement. Verify the physical result separately.
