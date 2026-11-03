@@ -2,7 +2,7 @@
 
 English · [简体中文](README.zh-CN.md)
 
-[![C++ Report Card](https://github.com/soulteary/linkerhand-tele-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/soulteary/linkerhand-tele-arm/actions/workflows/cppreportcard.yml)
+[![C++ Report Card](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml)
 
 Read 14 joints from a dual-arm device over classic SocketCAN. The project provides
 a C++17 core library, a CLI and a ROS2 node. Communication uses

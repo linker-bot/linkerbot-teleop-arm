@@ -2,7 +2,7 @@
 
 [English](README.md) · 简体中文
 
-[![C++ Report Card](https://github.com/soulteary/linkerhand-tele-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/soulteary/linkerhand-tele-arm/actions/workflows/cppreportcard.yml)
+[![C++ Report Card](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml)
 
 通过 classic SocketCAN 读取双臂 14 个关节，提供 C++17 核心库、命令行工具和 ROS2 节点。
 通信由 linkerbot-transport-cpp 的 Session 处理，协议解码和快照组装不依赖 ROS。
