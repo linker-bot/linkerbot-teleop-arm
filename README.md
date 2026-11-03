@@ -1,444 +1,93 @@
-# Linkerhand-Tele-Arm
+# Linkerhand Tele Arm
 
-> 当前开发接口：`getJointPosition()` 现在等待一组完整响应并可能抛出超时；读取缓存请使用 `latestSnapshot()` 并检查 `valid` / `isFresh()`。核心位置仍以度表示，现有 ROS2 话题保留旧单位，标准单位迁移另行进行。启动标定已禁用，设备接口须在进程外配置；发送归零命令不代表设备已确认执行。详见 [协议与快照契约](docs/PROTOCOL.md)、[测试门禁](docs/TESTING.md) 和 [安全边界](docs/SAFETY.md)。
+通过 classic SocketCAN 读取双臂 14 个关节，提供 C++17 核心库、命令行工具和 ROS2 节点。
+核心复用 linkerbot-transport-cpp Session；协议解码和四帧快照组装不依赖 ROS。
+Linux 支持 SocketCAN 硬件；macOS 用于核心构建与测试。ROS2 CI 验证 Humble。
 
+## 构建和安装
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Platform](https://img.shields.io/badge/Platform-Linux-blue.svg)](https://www.linux.org/)
-[![Architecture](https://img.shields.io/badge/Arch-x86__64%20%7C%20aarch64-lightgrey.svg)]()
-[![ROS2](https://img.shields.io/badge/ROS2-Humble%20%7C%20Foxy-green.svg)](https://www.ros.org/)
+完整说明见 [安装与部署](docs/INSTALL.md)。从仓库根目录执行：
 
-> 用于第二版遥操臂的驱动程序
-
-Linkerhand-Tele-Arm (LinkerTA) 是由灵心巧手（北京）科技有限公司开发的遥操臂驱动程序，支持通过 CAN 总线控制遥操臂设备，并提供 ROS2 接口。
-
-## 📋 目录
-
-- [特性](#-特性)
-- [系统要求](#-系统要求)
-- [快速开始](#-快速开始)
-- [安装](#-安装)
-- [配置](#-配置)
-- [使用示例](#-使用示例)
-- [ROS2 接口](#-ros2-接口)
-- [项目结构](#-项目结构)
-- [构建项目](#-构建项目)
-- [故障排查](#-故障排查)
-- [常见问题](#-常见问题)
-- [贡献](#-贡献)
-- [许可证](#-许可证)
-- [联系我们](#-联系我们)
-
-## ✨ 特性
-
-- 🎯 **遥操臂控制** - 支持左右双臂的关节位置控制
-- 🔌 **CAN 通信** - 基于 CAN 总线的实时通信
-- 📊 **状态监控** - 实时获取关节位置和错误状态
-- 🎮 **精确控制** - 支持关节位置精确控制
-- 🔄 **实时反馈** - 获取关节状态和错误码
-- 🛠️ **ROS2 支持** - 完整的 ROS2 节点和话题接口
-- 📚 **易于配置** - 通过 YAML 配置文件进行参数设置
-
-## 💻 系统要求
-
-- **操作系统**: Ubuntu 20.04+ (推荐 Ubuntu 22.04)
-- **架构**: x86_64 或 aarch64
-- **ROS2**: ROS2 Humble 或 Foxy
-- **编译器**: GCC 7.0+ 或 Clang 5.0+
-- **CMake**: 3.18+
-- **依赖**: 
-  - pthread
-  - CAN 设备驱动（SocketCAN）
-  - ROS2 相关包（如果使用 ROS2 模式）
-
-## 🚀 快速开始
-
-### 1. 克隆仓库
-
-```bash
-git clone <repository-url>
-cd linkerhand-tele-arm
+```sh
+./build.sh core
+./test.sh
+cmake --install build-core --prefix "$PWD/install-core"
 ```
 
-### 2. 启动 CAN 设备
+缺少 transport 依赖时，CMake 默认下载固定提交。离线环境先安装依赖，再传
+`-DLINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF -DCMAKE_PREFIX_PATH=/path/to/dependencies`。
+测试需要 GoogleTest。下游使用 `find_package(linkerta CONFIG REQUIRED)` 和 `linkerta::core`。
 
-在开始使用之前，需要配置并启动 CAN 设备：
+```cpp
+#include <linkerta/LinkerArm.h>
 
-```bash
-sudo ip link set can0 up type can bitrate 1000000
+LinkerArm::LinkerArm arm("can0", 1000000);
+const auto snapshot = arm.readJointState();
+// snapshot.positions_degrees 是完整快照，单位为度；超时会抛出异常。
 ```
 
-### 3. 配置参数
+头文件安装路径以实际导出接口为准；其他 API 与生命周期见 [Session 迁移契约](docs/SESSION.md)。
+`latestSnapshot()` 只读缓存，调用方必须检查 `valid` 和 `isFresh()`；首次未就绪的零值不是测量。
 
-编辑配置文件 `src/linkerta/config/lta.yaml`：
+## 配置 CAN 和命令行
 
-```yaml
-linkerta_node:
-  ros__parameters:
-    calibration: 0  # 0关闭标定 1开启标定
-    negation: [-1, -1, -1, -1, -1, -1, -1, -1, 1, -1, 1, -1, -1, -1]  # 关节方向调整
+CAN 接口应由管理员在进程外配置，命令示例见安装指南。驱动不会运行 sudo、配置 bitrate
+或自动标定。CLI 的 bitrate 参数保留调用兼容，不会修改操作系统接口。
+
+```sh
+install-core/bin/linkerta --help
+install-core/bin/linkerta --interface can0 --bitrate 1000000 --rate-hz 10 --timeout-ms 250 --count 20
+# 旧形式继续支持：
+install-core/bin/linkerta can0 1000000
 ```
 
-### 4. 编译项目
+CLI 输出完整新快照，单位为度。查询失败以非零状态退出；不会把缓存旧值冒充新读数。
+请求频率是主机调度目标，不是设备吞吐量保证。
 
-```bash
-./build.sh
-```
+## ROS2
 
-### 5. 运行程序
-
-```bash
+```sh
+source /opt/ros/humble/setup.bash
+./build.sh ros2
 ./startup.sh
 ```
 
-## 📦 安装
-
-### 方法一：使用构建脚本（推荐）
-
-```bash
-./build.sh
-```
-
-### 方法二：手动构建
-
-#### 非 ROS2 模式
-
-```bash
-mkdir build && cd build
-cmake ../src/linkerta
-make
-```
-
-#### ROS2 模式
-
-```bash
-colcon build --cmake-args -DUSE_ROS2=ON
-```
-
-## ⚙️ 配置
-
-### 配置文件位置
-
-配置文件位于：`src/linkerta/config/lta.yaml`
-
-### 配置参数说明
-
-| 参数 | 类型 | 说明 | 默认值 |
-| :--- | :--- | :--- | :--- |
-| `calibration` | int | 标定模式：0=关闭标定，1=开启标定 | 0 |
-| `negation` | array | 关节方向调整数组，共14个数值<br/>1-7: 左臂关节，8-14: 右臂关节 | `[-1, ...]` |
-
-### 遥操臂标定流程
-
-1. 将每个遥操臂关节转动到刻度线位置
-2. 将配置文件中的 `calibration` 参数改为 `1`
-3. 重新编译项目：`./build.sh`
-4. 运行程序：`./startup.sh` 完成标定
-5. 将 `calibration` 参数改回 `0`
-6. 重新编译项目：`./build.sh`
-
-**注意**: 每次更改配置参数后都需要重新编译和重启程序！
-
-## 💡 使用示例
-
-### 基本使用（非 ROS2 模式）
-
-```cpp
-#include "LinkerArm.h"
-#include <iostream>
-
-int main() {
-    // 创建遥操臂实例
-    LinkerArm::LinkerArm arm("can0", 1000000);
-    
-    // 获取关节位置
-    auto positions = arm.getJointPosition();
-    for (size_t i = 0; i < positions.size(); ++i) {
-        std::cout << "Joint " << i << ": " << positions[i] << std::endl;
-    }
-    
-    // 获取关节错误状态
-    auto error_codes = arm.getJointErrorCode();
-    for (size_t i = 0; i < error_codes.size(); ++i) {
-        std::cout << "Joint " << i << " error: " << error_codes[i] << std::endl;
-    }
-    
-    return 0;
-}
-```
-
-### ROS2 模式使用
-
-启动 ROS2 节点：
-
-```bash
-ros2 launch linkerta run.launch.py
-```
-
-## 🔌 ROS2 接口
-
-### 话题
-
-#### 发布的话题
-
-| 话题名称 | 类型 | 说明 |
-| :--- | :--- | :--- |
-| `/left_arm_joint_control` | `std_msgs/Float32MultiArray` | 左臂关节位置数据（7个关节） |
-| `/right_arm_joint_control` | `std_msgs/Float32MultiArray` | 右臂关节位置数据（7个关节） |
-| `/joint_error_code` | `std_msgs/BoolMultiArray` | 所有关节状态（1=故障，0=正常） |
-
-### 查看话题数据
-
-```bash
-# 查看左臂关节位置
-ros2 topic echo /left_arm_joint_control
-
-# 查看右臂关节位置
-ros2 topic echo /right_arm_joint_control
-
-# 查看关节错误状态
-ros2 topic echo /joint_error_code
-```
-
-### 节点信息
-
-- **节点名称**: `linkerta_node`
-- **命名空间**: `/`
-- **自动重启**: 启用（延迟 3 秒）
-
-## 📁 项目结构
-
-```
-linkerhand-tele-arm/
-├── src/
-│   └── linkerta/
-│       ├── CMakeLists.txt       # CMake 构建配置
-│       ├── package.xml           # ROS2 包配置
-│       ├── config/
-│       │   └── lta.yaml          # 配置文件
-│       ├── launch/
-│       │   └── run.launch.py     # ROS2 启动文件
-│       ├── src/
-│       │   ├── SessionFactory.h  # 经典 CAN Session 创建与发现
-│       │   ├── SessionFactory.cpp
-│       │   ├── ArmProtocol.h     # 纯协议与完整快照
-│       │   ├── ArmProtocol.cpp
-│       │   ├── LinkerArm.h       # 遥操臂接口
-│       │   ├── LinkerArm.cpp     # 遥操臂实现
-│       │   ├── main.cpp          # 非 ROS2 主程序
-│       │   └── main_ros2.cpp     # ROS2 主程序
-│       └── test/                 # 测试目录
-│           ├── CMakeLists.txt    # 测试构建配置
-│           ├── test_protocol.cpp # 协议与快照回归
-│           ├── test_runtime.cpp  # Session 驱动的运行时测试
-│           ├── test_session.cpp  # 路由、队列、取消与所有权
-│           └── test_canbus_io.cpp # SocketCAN 后端测试
-├── docs/
-│   ├── FAQ.md                    # 常见问题
-│   ├── TROUBLESHOOTING.md        # 故障排查
-│   └── TESTING.md                # 测试文档
-├── build.sh                      # 构建脚本
-├── test.sh                       # 测试脚本
-├── startup.sh                    # 启动脚本
-├── .clang-format                 # 代码格式配置
-├── .clang-tidy                   # 代码质量配置
-├── .gitignore                    # Git 忽略规则
-├── .gitattributes                # Git 属性配置
-└── README.md                     # 本文档
-```
-
-## 🔨 构建项目
-
-### 使用构建脚本
-
-```bash
-./build.sh
-```
-
-### 手动构建（非 ROS2）
-
-```bash
-mkdir build && cd build
-cmake ../src/linkerta
-make
-```
-
-### 手动构建（ROS2）
-
-```bash
-colcon build --cmake-args -DUSE_ROS2=ON
-```
-
-### 构建选项
-
-- `USE_ROS2`: 启用 ROS2 支持（默认: OFF）
-- `BUILD_TESTING`: 启用测试（默认: OFF）
-- `CMAKE_BUILD_TYPE`: 构建类型（Release/Debug，默认: Release）
-
-## 🧪 测试
-
-项目包含完整的单元测试框架，使用 Google Test 进行测试。
-
-### 运行测试
-
-```bash
-# 运行所有测试
-./test.sh
-
-# 生成代码覆盖率报告
-./test.sh --coverage
-
-# 显示详细输出
-./test.sh --verbose
-```
-
-### 测试覆盖率
-
-项目目标测试覆盖率 > 80%，核心功能覆盖率 > 90%。
-
-查看详细测试文档：[测试文档](docs/TESTING.md)
-
-## 🔧 故障排查
-
-### CAN 设备问题
-
-**问题**: 无法打开 CAN 设备
-
-**解决方案**:
-1. 检查 CAN 设备是否已启动：
-   ```bash
-   ip link show can0
-   ```
-2. 检查设备权限：
-   ```bash
-   sudo ip link set can0 up type can bitrate 1000000
-   ```
-3. 检查设备是否在线：
-   ```bash
-   ifconfig can0
-   ```
-
-### 编译问题
-
-**问题**: CMake 找不到依赖
-
-**解决方案**:
-1. 确保已安装所有依赖：
-   ```bash
-   sudo apt-get update
-   sudo apt-get install build-essential cmake libpthread-stubs0-dev
-   ```
-2. 对于 ROS2 模式，确保 ROS2 环境已正确设置：
-   ```bash
-   source /opt/ros/humble/setup.bash  # 或您的 ROS2 版本
-   ```
-
-### 运行时问题
-
-**问题**: 程序无法连接到设备
-
-**解决方案**:
-1. 检查 CAN 设备状态
-2. 检查配置文件路径是否正确
-3. 查看程序日志输出
-
-### ROS2 相关问题
-
-**问题**: 无法找到 ROS2 节点
-
-**解决方案**:
-1. 确保已 source ROS2 环境：
-   ```bash
-   source install/setup.bash
-   ```
-2. 检查节点是否运行：
-   ```bash
-   ros2 node list
-   ```
-
-## ❓ 常见问题
-
-### Q: 如何更改 CAN 设备名称？
-
-A: 修改代码中的设备名称，或通过构造函数参数传入。默认使用 `can0`。
-
-### Q: 标定后需要做什么？
-
-A: 标定完成后，必须将 `calibration` 参数改回 `0` 并重新编译，否则每次启动都会重新标定。
-
-### Q: 如何调整关节方向？
-
-A: 修改配置文件中的 `negation` 数组，对应关节的值改为 `-1` 或 `1` 来反转方向。
-
-### Q: 支持哪些 ROS2 版本？
-
-A: 支持 ROS2 Foxy 和 Humble，其他版本可能需要调整。
-
-### Q: 如何查看实时数据？
-
-A: 使用 `ros2 topic echo` 命令查看相应话题，或使用 `ros2 topic hz` 查看发布频率。
-
-## 🤝 贡献
-
-我们欢迎社区贡献！请参考以下步骤：
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 📄 许可证
-
-本项目采用 [Apache-2.0 许可证](LICENSE)。
-
-Copyright (c) 2026 灵心巧手（北京）科技有限公司
-
-## 📞 联系我们
-
-- **官方网站**: [https://linkerbot.cn](https://linkerbot.cn)
-- **关于我们**: [https://linkerbot.cn/aboutUs](https://linkerbot.cn/aboutUs)
-- **GitHub**: [项目仓库地址]
-
----
-
-**注意**: 使用前请确保设备已正确连接并配置好 CAN 接口。
-
-### Session transport dependency
-
-The driver uses `linkerbot-transport-cpp` through its `linkerbot::comm` CMake target.
-An installed package is preferred; the source fallback is pinned to a commit.
-For dependency setup, shared-Session ownership and cancellation semantics see
-[Session integration](docs/SESSION.md).
-
-## ROS2 interface (PR5)
-
-The executor runs a wall timer at `poll_rate_hz` (1–200 Hz, default 100).
-This is a request scheduling limit, not a promise of hardware sample frequency:
-a request can take up to `request_timeout_ms` (1–10000 ms, default 250).
-Only newly completed, valid snapshots within `max_snapshot_age_ms` (default 250)
-are published. Timeouts do not republish the previous positions. ROS timestamps approximate host reception time: publication-time ROS `now()`
-minus snapshot age measured with the steady clock. They are not device-clock
-or measured device sample timestamps. A paused, scaled, or jumping simulated
-ROS clock affects this mapping; negative results are clamped to zero. Messages
-derived from one snapshot share the same timestamp.
-
-`/joint_states` uses radians for all fourteen joints. Existing
-`/left_arm_joint_control` and `/right_arm_joint_control` topics retain degrees
-and can be disabled with `publish_legacy_topics:=false`. Direction corrections
-use the same fourteen-entry `negation` map on both interfaces. Diagnostics
-report missing/stale snapshots and transport failures; unknown firmware fault
-bits must not be interpreted as a healthy joint.
-
-Set `can_interface` to an already configured interface such as `can0`, or leave
-it empty for device discovery. The node does not configure the operating system
-CAN interface. Parameters are validated before opening hardware and are read-only
-while running; edit the YAML or launch overrides and restart to change them.
-
-Startup calibration remains forbidden (`calibration` must be zero), including
-when launch respawns a failed node. An operator may explicitly enable
-`allow_calibration` and invoke the node's Trigger calibration service; the
-configured `calibration_joint` selects 0–13 or 255 for all joints. Each accepted
-call submits one command without automatic retries or replay after recovery.
-A transport receipt confirms submission only: the protocol has no confirmed
-calibration-completion acknowledgement. Verify the physical result separately.
+配置源文件为 `src/linkerta/config/lta.yaml`，安装后位于包 share 目录。
+也可直接 `ros2 run linkerta linkerta_node --ros-args -p can_interface:=can0`。
+启动参数只读，修改后需要重启：
+
+- `can_interface`：空字符串时通过 `device`（默认 `master_arm`）发现设备；非空时打开已配置接口。
+- `poll_rate_hz`：默认 100，范围 1–200。
+- `request_timeout_ms`、`max_snapshot_age_ms`：默认 250，范围 1–10000。
+- `negation`：恰好 14 个方向值，每项只能为 -1 或 1。
+- `publish_legacy_topics`：默认 true，可关闭旧话题。
+- `calibration`：只允许 0，启动标定被禁止。
+- `allow_calibration`：默认 false；显式启用后，`calibration_joint` 为 0–13 或 255（全部）。
+
+发布接口：
+
+- `/joint_states`：`sensor_msgs/msg/JointState`，14 个关节，弧度。
+- `/left_arm_joint_control`、`/right_arm_joint_control`：兼容话题，各 7 个关节，度。
+- `/joint_error_code`：兼容字符串，缺失的故障位标为 unknown。
+- `/diagnostics`：`diagnostic_msgs/msg/DiagnosticArray`，报告超时、陈旧和关节故障。
+
+每个完整新快照只发布一次，缺帧、超时或陈旧结果不发布位置。来自同一快照的消息使用同一时间戳。
+时间戳为发布时 ROS 时间减去 steady clock 测得的快照年龄，是近似主机收帧时间，非设备采样时间。
+模拟时钟暂停、倍率和跳变会影响映射；负值钳制为零。
+
+`~/calibrate_once` 使用 `std_srvs/srv/Trigger`。只有显式允许时才排队一次命令，每个进程最多尝试一次，
+即使发送失败也不自动重试。由于协议没有完成 ACK，响应 `success=false` 并在 message/诊断说明状态；
+它不等于设备标定成功。重启不会自动发送标定。
+
+## 协议、测试和限制
+
+[协议与快照](docs/PROTOCOL.md) 记录 DLC、符号角度、故障未知值和版本字节格式；
+[安全边界](docs/SAFETY.md)、[测试](docs/TESTING.md) 和 [故障排查](docs/TROUBLESHOOTING.md) 提供更多说明。
+四帧无设备周期编号，主机一致快照不能证明同步采样；延迟旧响应也无法完全辨别。
+尚未据此承诺实机最大频率、延迟或长期稳定性。模拟测试不能替代实际总线与设备验证。
+
+## 许可证
+
+`package.xml` 声明 Apache-2.0，但仓库当前没有顶层 LICENSE 正文，分发前需维护者补齐。
+依赖 linkerbot-transport-cpp 使用 MIT；测试依赖 GoogleTest 使用 BSD-3-Clause。
+分发依赖代码或二进制时应保留对应许可和声明。

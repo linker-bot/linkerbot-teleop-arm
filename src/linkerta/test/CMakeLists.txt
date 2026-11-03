@@ -24,7 +24,7 @@ include_directories(
 )
 
 # 测试源文件
-set(TEST_SOURCES test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp test_session.cpp)
+set(TEST_SOURCES test_cli.cpp test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp test_session.cpp)
 add_executable(run_tests ${TEST_SOURCES})
 
 # 查找Threads库
@@ -103,3 +103,6 @@ if(USE_ROS2)
         TIMEOUT 60)
 
 endif()
+
+add_test(NAME cli-help COMMAND linkerta --help)
+set_tests_properties(cli-help PROPERTIES PASS_REGULAR_EXPRESSION "Usage: linkerta")

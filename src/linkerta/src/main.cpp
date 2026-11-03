@@ -1,52 +1,67 @@
-// main.cpp
-#include <atomic>
-#include <chrono>
-#include <iomanip>
-#include <iostream>
-#include <signal.h>
-#include <thread>
-
+#include "CliOptions.h"
 #include "LinkerArm.h"
 
-using namespace std;
+#include <algorithm>
+#include <chrono>
+#include <csignal>
+#include <iostream>
+#include <thread>
+#include <vector>
 
-static volatile sig_atomic_t g_running = 1;
-
-void signal_handler(int) {
-    g_running = 0;
+namespace {
+volatile std::sig_atomic_t running = 1;
+void signalHandler(int) {
+    running = 0;
 }
 
-int main(int argc, char *argv[]) {
-    /* 2. 注册 Ctrl-C 退出 */
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-
-    try {
-        if (argc > 3)
-            throw invalid_argument("usage: linkerta [interface] [bitrate]");
-        const string can_if = argc > 1 ? argv[1] : "can0";
-        size_t consumed = 0;
-        const string rate_text = argc > 2 ? argv[2] : "1000000";
-        const int baudrate = stoi(rate_text, &consumed);
-        if (consumed != rate_text.size() || baudrate <= 0)
-            throw invalid_argument("bitrate must be a positive integer");
-        /* 3. 创建机械臂通信对象 */
-        LinkerArm::LinkerArm arm(can_if, baudrate);
-        this_thread::sleep_for(200ms); // 等接收线程起来
-
-        /* 4. 主循环：1 Hz 发 GET_JOINT_POSITION */
-        while (g_running) {
-            std::vector<float> temp = arm.getJointPosition(); // 发送 0x01 命令
-            for (const auto value : temp)
-                std::cout << value << " ";
-            std::cout << std::endl;
-            this_thread::sleep_for(1s);
-        }
-    } catch (const exception &e) {
-        cerr << "[ERROR] " << e.what() << endl;
-        return -1;
+void waitUntil(LinkerArm::Protocol::TimePoint deadline) {
+    while (running) {
+        const auto remaining = deadline - LinkerArm::Protocol::Clock::now();
+        if (remaining <= LinkerArm::Protocol::Clock::duration::zero())
+            break;
+        std::this_thread::sleep_for(
+            std::min(remaining, std::chrono::duration_cast<LinkerArm::Protocol::Clock::duration>(
+                                    std::chrono::milliseconds(20))));
     }
+}
+} // namespace
 
-    cout << "main exit cleanly." << endl;
+int main(int argc, char *argv[]) {
+    try {
+        const auto options =
+            LinkerArm::parseCliOptions(std::vector<std::string>(argv + 1, argv + argc));
+        if (options.help) {
+            std::cout << LinkerArm::cliUsage();
+            return 0;
+        }
+        std::signal(SIGINT, signalHandler);
+        std::signal(SIGTERM, signalHandler);
+        LinkerArm::LinkerArm arm(options.interface_name, options.bitrate);
+        const auto period = std::chrono::duration_cast<LinkerArm::Protocol::Clock::duration>(
+            std::chrono::duration<double>(1.0 / options.rate_hz));
+        std::uint64_t emitted = 0;
+        while (running && (options.count == 0 || emitted < options.count)) {
+            const auto started = LinkerArm::Protocol::Clock::now();
+            const auto snapshot = arm.readJointState(options.timeout);
+            if (!running)
+                break;
+            for (std::size_t i = 0; i < snapshot.positions_degrees.size(); ++i) {
+                if (i)
+                    std::cout << ' ';
+                std::cout << snapshot.positions_degrees[i];
+            }
+            std::cout << '\n' << std::flush;
+            ++emitted;
+            if (options.count != 0 && emitted == options.count)
+                break;
+            // A slow query does not create a catch-up burst.
+            waitUntil(started + period);
+        }
+    } catch (const std::exception &error) {
+        if (!running)
+            return 0;
+        std::cerr << "linkerta: " << error.what() << '\n';
+        return 1;
+    }
     return 0;
 }
