@@ -34,7 +34,7 @@ endif()
 # 构建选项
 #-----------------------------------------------------------------------------
 option(USE_ROS2 "Build with ROS2 support" OFF)
-option(BUILD_TESTING "Build the testing tree" ON)
+include(CTest)
 
 message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "Version: ${PROJECT_VERSION}")
@@ -56,20 +56,14 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 #-----------------------------------------------------------------------------
 # 可执行文件：linkerta (非 ROS2 版本)
 #-----------------------------------------------------------------------------
-add_executable(linkerta
-    ${CORE_SRCS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
-)
-
 find_package(Threads REQUIRED)
-target_link_libraries(linkerta PRIVATE Threads::Threads)
-
-# 设置目标属性
-set_target_properties(linkerta PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF
-)
+add_library(linkerta_core ${CORE_SRCS} src/ArmProtocol.cpp)
+target_include_directories(linkerta_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(linkerta_core PUBLIC Threads::Threads)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(linkerta src/main.cpp)
+    target_link_libraries(linkerta PRIVATE linkerta_core)
+endif()
 
 #-----------------------------------------------------------------------------
 # ROS2 支持
@@ -81,12 +75,11 @@ if(USE_ROS2)
     find_package(sensor_msgs REQUIRED)
     
     add_executable(linkerta_node
-        ${CORE_SRCS}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/main_ros2.cpp
     )
     
     target_link_libraries(linkerta_node
-        Threads::Threads
+        linkerta_core
         rclcpp::rclcpp
     )
     
@@ -104,17 +97,18 @@ if(USE_ROS2)
     
     ament_target_dependencies(linkerta_node rclcpp std_msgs sensor_msgs)
     
-    ament_package()
 endif()
 
 #-----------------------------------------------------------------------------
 # 安装配置
 #-----------------------------------------------------------------------------
 # 安装非 ROS2 版本的可执行文件
+if(TARGET linkerta)
 install(TARGETS linkerta
     RUNTIME DESTINATION bin
     COMPONENT Runtime
 )
+endif()
 
 # ROS2 版本安装
 if(USE_ROS2)
@@ -150,4 +144,8 @@ if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(test)
     message(STATUS "Testing enabled")
+endif()
+
+if(USE_ROS2)
+    ament_package()
 endif()

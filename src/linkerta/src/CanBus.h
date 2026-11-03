@@ -9,12 +9,6 @@ struct CANFrame {
     uint8_t can_dlc{};
     uint8_t data[8]{};
 };
-struct Job {
-    const char *name;
-    uint32_t id;
-    bool is_ext;
-    uint8_t data0;
-};
 namespace Communication {
 class ICanBus {
 public:
