@@ -7,3 +7,9 @@ Tests call the production protocol, snapshot assembler and runtime through an in
 GoogleTest is discovered from the installed CMake package first; otherwise FetchContent obtains v1.14.0 pinned to commit f8d7d77c06936315286eb55f8de22cd23c188571. Pass `-DLINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF` to fail rather than download missing dependencies. For offline builds pass `-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=/absolute/path/to/googletest` or `-DGTest_DIR=/path/to/installed/cmake/GTest`.
 
 `./test.sh --coverage` requires lcov/genhtml at configure time and fails if the coverage target is unavailable. Coverage includes the core library; percentages are measured, not assumed. Hardware timing, bus-off, CAN acknowledgments and device calibration require separate bench validation.
+
+The transport dependency can be supplied offline with
+`-DFETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT=/path/to/linkerbot-transport-cpp`.
+Session integration tests use the dependency's real Session and FakeTransport:
+routing, queue bounds, cancellation and external ownership are exercised in
+addition to the unchanged device codec and snapshot suite. See [SESSION.md](SESSION.md).

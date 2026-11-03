@@ -219,17 +219,20 @@ linkerhand-tele-arm/
 │       ├── launch/
 │       │   └── run.launch.py     # ROS2 启动文件
 │       ├── src/
-│       │   ├── CanBus.h          # CAN 总线接口
-│       │   ├── CanBus.cpp        # CAN 总线实现
+│       │   ├── SessionFactory.h  # 经典 CAN Session 创建与发现
+│       │   ├── SessionFactory.cpp
+│       │   ├── ArmProtocol.h     # 纯协议与完整快照
+│       │   ├── ArmProtocol.cpp
 │       │   ├── LinkerArm.h       # 遥操臂接口
 │       │   ├── LinkerArm.cpp     # 遥操臂实现
 │       │   ├── main.cpp          # 非 ROS2 主程序
 │       │   └── main_ros2.cpp     # ROS2 主程序
 │       └── test/                 # 测试目录
 │           ├── CMakeLists.txt    # 测试构建配置
-│           ├── test_canbus.cpp   # CanBus 单元测试
-│           ├── test_linkerarm.cpp # LinkerArm 单元测试
-│           └── mock_canbus.h     # Mock 对象定义
+│           ├── test_protocol.cpp # 协议与快照回归
+│           ├── test_runtime.cpp  # Session 驱动的运行时测试
+│           ├── test_session.cpp  # 路由、队列、取消与所有权
+│           └── test_canbus_io.cpp # SocketCAN 后端测试
 ├── docs/
 │   ├── FAQ.md                    # 常见问题
 │   ├── TROUBLESHOOTING.md        # 故障排查
@@ -400,3 +403,10 @@ Copyright (c) 2026 灵心巧手（北京）科技有限公司
 ---
 
 **注意**: 使用前请确保设备已正确连接并配置好 CAN 接口。
+
+### Session transport dependency
+
+The driver uses `linkerbot-transport-cpp` through its `linkerbot::comm` CMake target.
+An installed package is preferred; the source fallback is pinned to a commit.
+For dependency setup, shared-Session ownership and cancellation semantics see
+[Session integration](docs/SESSION.md).

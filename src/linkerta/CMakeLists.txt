@@ -35,6 +35,23 @@ endif()
 #-----------------------------------------------------------------------------
 option(USE_ROS2 "Build with ROS2 support" OFF)
 include(CTest)
+option(LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS "Download missing dependencies" ON)
+find_package(linkerbot-comm 0.3 CONFIG QUIET)
+if(NOT TARGET linkerbot::comm)
+    if(NOT LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS AND NOT FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT)
+        message(FATAL_ERROR "linkerbot-comm missing; install it or set FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT")
+    endif()
+    include(FetchContent)
+    set(LINKERBOT_COMM_BUILD_TESTS OFF)
+    set(LINKERBOT_COMM_BUILD_EXAMPLES OFF)
+    set(LINKERBOT_COMM_BUILD_BENCHMARKS OFF)
+    FetchContent_Declare(linkerbot_transport
+        GIT_REPOSITORY https://github.com/soulteary/linkerbot-transport-cpp.git
+        GIT_TAG e514b832e09ecd60a56d2c67e39c54285793fff8
+    )
+    FetchContent_MakeAvailable(linkerbot_transport)
+endif()
+
 
 message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "Version: ${PROJECT_VERSION}")
@@ -46,7 +63,7 @@ message(STATUS "ROS2 support: ${USE_ROS2}")
 # 源文件配置
 #-----------------------------------------------------------------------------
 set(CORE_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/CanBus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SessionFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LinkerArm.cpp
 )
 
@@ -59,7 +76,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 find_package(Threads REQUIRED)
 add_library(linkerta_core ${CORE_SRCS} src/ArmProtocol.cpp)
 target_include_directories(linkerta_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(linkerta_core PUBLIC Threads::Threads)
+target_link_libraries(linkerta_core PUBLIC Threads::Threads linkerbot::comm)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(linkerta src/main.cpp)
     target_link_libraries(linkerta PRIVATE linkerta_core)

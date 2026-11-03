@@ -2,7 +2,6 @@
 cmake_minimum_required(VERSION 3.18)
 
 # 查找Google Test
-option(LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS "Download missing test dependencies" ON)
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
     if(NOT LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS AND NOT FETCHCONTENT_SOURCE_DIR_GOOGLETEST)
@@ -25,7 +24,7 @@ include_directories(
 )
 
 # 测试源文件
-set(TEST_SOURCES test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp)
+set(TEST_SOURCES test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp test_session.cpp)
 add_executable(run_tests ${TEST_SOURCES})
 
 # 查找Threads库

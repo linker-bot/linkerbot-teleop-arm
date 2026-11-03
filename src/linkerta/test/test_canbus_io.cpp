@@ -1,77 +1,98 @@
-#include "CanBus.h"
 #include <gtest/gtest.h>
-
 #ifdef __linux__
 #include <cerrno>
-#include <fcntl.h>
+#include <linkerbot/can/socketcan_transport.hpp>
 #include <linux/can.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 namespace {
+using linkerbot::can::Message;
+using linkerbot::can::SocketCANTransport;
 class SocketCanIo : public testing::Test {
 protected:
     int peer = -1;
-    std::unique_ptr<Communication::CanBus> bus;
+    std::unique_ptr<SocketCANTransport> bus;
     void SetUp() override {
         int sockets[2];
         ASSERT_EQ(socketpair(AF_UNIX, SOCK_DGRAM, 0, sockets), 0);
         peer = sockets[1];
-        bus = std::make_unique<Communication::CanBus>(Communication::CanBus::AdoptFd{sockets[0]});
+        bus = std::make_unique<SocketCANTransport>(SocketCANTransport::AdoptFd{sockets[0]});
     }
     void TearDown() override {
         close(peer);
     }
 };
-
 TEST_F(SocketCanIo, RejectsOversizedPayloadBeforeWriting) {
-    EXPECT_THROW(bus->send(std::vector<uint8_t>(9, 0xff), 0x04), std::invalid_argument);
-    EXPECT_THROW(bus->send({}, 0x800), std::invalid_argument);
+    Message message;
+    message.id = 4;
+    message.dlc = 9;
+    EXPECT_THROW(bus->write(message), linkerbot::can::ValidationError);
+    message.id = 0x800;
+    message.dlc = 0;
+    EXPECT_THROW(bus->write(message), linkerbot::can::ValidationError);
     can_frame frame{};
     EXPECT_EQ(recv(peer, &frame, sizeof(frame), MSG_DONTWAIT), -1);
     EXPECT_EQ(errno, EAGAIN);
-    bus->send(std::vector<uint8_t>(8, 0xab), 0x04);
+    message.id = 4;
+    message.dlc = 8;
+    std::fill_n(message.data.begin(), 8, 0xab);
+    bus->write(message);
     ASSERT_EQ(read(peer, &frame, sizeof(frame)), sizeof(frame));
     EXPECT_EQ(frame.can_dlc, 8);
     EXPECT_EQ(frame.data[7], 0xab);
 }
-
 TEST_F(SocketCanIo, EmptyFrameIsInitializedAndLengthBounded) {
-    bus->send({}, 0x04);
+    Message message;
+    message.id = 4;
+    bus->write(message);
     can_frame wire{};
     ASSERT_EQ(read(peer, &wire, sizeof(wire)), sizeof(wire));
     EXPECT_EQ(wire.can_dlc, 0);
-    for (auto byte : wire.data)
+    for (const auto byte : wire.data)
         EXPECT_EQ(byte, 0);
     wire.can_id = 0x65;
     wire.can_dlc = 9;
+    wire.data[7] = 0x5a;
     ASSERT_EQ(write(peer, &wire, sizeof(wire)), sizeof(wire));
-    EXPECT_EQ(bus->recv().can_dlc, 0);
+    // The imported decoder bounds native classic DLC to eight payload bytes.
+    // Protocol invalid-length checks remain independently covered.
+    const auto received = bus->read();
+    ASSERT_TRUE(received);
+    EXPECT_EQ(received->dlc, 8);
+    EXPECT_EQ(received->data[7], 0x5a);
+    for (std::size_t i = 8; i < received->data.size(); ++i)
+        EXPECT_EQ(received->data[i], 0);
 }
-
-TEST_F(SocketCanIo, FiltersRemoteErrorAndExtendedFrames) {
-    for (const uint32_t flag : {CAN_RTR_FLAG, CAN_ERR_FLAG, CAN_EFF_FLAG}) {
+TEST_F(SocketCanIo, FiltersRemoteErrorAndPreservesExtendedIdentity) {
+    for (const uint32_t flag : {CAN_RTR_FLAG, CAN_ERR_FLAG}) {
         can_frame wire{};
         wire.can_id = 0x65 | flag;
         wire.can_dlc = 8;
         ASSERT_EQ(write(peer, &wire, sizeof(wire)), sizeof(wire));
-        EXPECT_EQ(bus->recv().can_dlc, 0);
+        EXPECT_FALSE(bus->read());
     }
+    can_frame wire{};
+    wire.can_id = 0x65 | CAN_EFF_FLAG;
+    wire.can_dlc = 8;
+    ASSERT_EQ(write(peer, &wire, sizeof(wire)), sizeof(wire));
+    const auto message = bus->read();
+    ASSERT_TRUE(message);
+    EXPECT_TRUE(message->is_extended);
+    EXPECT_EQ(message->id, 0x65);
 }
-
 TEST_F(SocketCanIo, ShortDatagramIsAnErrorAndIdleIsNot) {
     const uint8_t byte = 1;
     ASSERT_EQ(write(peer, &byte, 1), 1);
-    EXPECT_THROW(bus->recv(), std::runtime_error);
-    EXPECT_EQ(bus->recv().can_dlc, 0);
-    EXPECT_THROW(bus->setReceiveTimeout(0, 0), std::invalid_argument);
+    EXPECT_THROW((void)bus->read(), linkerbot::can::TransportIOError);
+    EXPECT_FALSE(bus->read());
+    bus->close();
+    EXPECT_THROW((void)bus->read(), linkerbot::can::ClosedError);
 }
-
 TEST(CanBusValidation, RejectsInvalidInterfaceBeforeSocketAccess) {
-    EXPECT_THROW(Communication::CanBus("", 1000000), std::invalid_argument);
-    EXPECT_THROW(Communication::CanBus(std::string(128, 'x'), 1000000), std::invalid_argument);
-    EXPECT_THROW(Communication::CanBus("can0", 0), std::invalid_argument);
-    EXPECT_THROW(Communication::CanBus("nonexistent-can", 1000000), std::runtime_error);
+    EXPECT_THROW(SocketCANTransport(""), linkerbot::can::ValidationError);
+    EXPECT_THROW(SocketCANTransport(std::string(128, 'x')), linkerbot::can::ValidationError);
+    EXPECT_THROW(SocketCANTransport("nonexistent-can"), linkerbot::can::TransportIOError);
 }
 } // namespace
 #endif
