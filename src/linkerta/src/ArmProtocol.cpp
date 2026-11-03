@@ -51,7 +51,8 @@ DecodeResult decodeFrame(const Frame &frame) noexcept {
     }
     const std::size_t block = frame.can_id - 0x65U;
     const bool four_joints = block % 2 == 0;
-    if ((four_joints && frame.dlc != 8) || (!four_joints && frame.dlc != 6 && frame.dlc != 7)) {
+    if ((four_joints && frame.dlc != 8) ||
+        (!four_joints && frame.dlc != 6 && frame.dlc != 7 && frame.dlc != 8)) {
         return {DecodeError::invalid_length, std::nullopt};
     }
     DecodedFrame decoded;
@@ -60,7 +61,7 @@ DecodeResult decodeFrame(const Frame &frame) noexcept {
     for (std::size_t i = 0; i < decoded.count; ++i) {
         decoded.positions_degrees[i] = decodeAngle(frame.data[2 * i], frame.data[2 * i + 1]);
     }
-    if (!four_joints && frame.dlc == 7) {
+    if (!four_joints && frame.dlc >= 7) {
         decoded.fault_bits = frame.data[6];
     }
     return {DecodeError::none, decoded};

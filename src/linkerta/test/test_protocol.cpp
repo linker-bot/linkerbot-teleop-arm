@@ -60,7 +60,8 @@ TEST(ArmProtocol, LengthContractForEveryJointId) {
             auto frame = jointFrame(block);
             frame.dlc = static_cast<std::uint8_t>(length);
             const auto result = decodeFrame(frame);
-            const bool valid = block % 2 == 0 ? length == 8 : length == 6 || length == 7;
+            const bool valid =
+                block % 2 == 0 ? length == 8 : length == 6 || length == 7 || length == 8;
             EXPECT_EQ(result.frame.has_value(), valid) << block << ":" << length;
             EXPECT_EQ(result.error, valid ? DecodeError::none : DecodeError::invalid_length);
         }
@@ -298,3 +299,14 @@ TEST(ArmSnapshot, ValidatesSkewAndAllowsExactlyTheConfiguredBoundary) {
 }
 
 } // namespace
+
+TEST(ArmProtocol, PreservesLegacyPaddedFaultReply) {
+    auto frame = jointFrame(1);
+    frame.dlc = 8;
+    frame.data[6] = 0x55;
+    frame.data[7] = 0xff;
+    const auto result = decodeFrame(frame);
+    ASSERT_TRUE(result.frame);
+    EXPECT_EQ(result.frame->fault_bits, 0x55);
+    EXPECT_FLOAT_EQ(result.frame->positions_degrees[0], 10.0f);
+}

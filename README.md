@@ -45,7 +45,7 @@ Linkerhand-Tele-Arm (LinkerTA) 是由灵心巧手（北京）科技有限公司�
 - **架构**: x86_64 或 aarch64
 - **ROS2**: ROS2 Humble 或 Foxy
 - **编译器**: GCC 7.0+ 或 Clang 5.0+
-- **CMake**: 3.15+
+- **CMake**: 3.18+
 - **依赖**: 
   - pthread
   - CAN 设备驱动（SocketCAN）

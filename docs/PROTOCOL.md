@@ -22,17 +22,18 @@ Accepted replies:
   are invalid.
 - `0x65`: exactly eight bytes, left joints 0–3.
 - `0x66`: exactly six bytes for left joints 4–6, optionally followed by one fault
-  byte (DLC seven) covering all seven left joints.
+  byte (DLC seven or eight) covering all seven left joints.
 - `0x67`: exactly eight bytes, right joints 7–10.
 - `0x68`: exactly six bytes for right joints 11–13, optionally followed by one
-  fault byte (DLC seven) covering all seven right joints.
+  fault byte (DLC seven or eight) covering all seven right joints.
 
 Each angle is a signed big-endian 16-bit value in tenths of a degree. A fault byte
 uses bits 0–6 for the corresponding arm's seven joints. The absent fault byte in
 a six-byte reply means **unknown**, not healthy. `fault_valid` records this
-distinction. An eight-byte `0x66`/`0x68` reply is rejected until a documented
-firmware variant establishes the meaning of that byte; trailing bytes must not
-silently become a compatibility promise. Unknown IDs and all other lengths are
+distinction. Eight-byte `0x66`/`0x68` replies remain accepted for compatibility
+with the previous driver's `DLC >= 7` behavior. The eighth byte is ignored and
+has no assigned semantics; firmware documentation is still needed to interpret
+it. Unknown IDs and all other lengths are
 rejected without publishing or changing a snapshot.
 
 `decodeFrame()` returns both a classified `DecodeError` and an optional decoded

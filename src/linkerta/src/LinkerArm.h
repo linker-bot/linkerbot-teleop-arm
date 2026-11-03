@@ -25,7 +25,10 @@ public:
     ~LinkerArm();
     std::vector<float> getJointPosition();
     std::vector<bool> getJointErrorCode();
+    // Cached data can be invalid or stale. Check valid/isFresh() before use.
     Protocol::ArmSnapshot latestSnapshot();
+    // One in-flight request; throws on invalid timeout, send/receive failure or
+    // deadline expiry. Driver calls themselves cannot be forcibly interrupted.
     Protocol::ArmSnapshot readJointState(
         std::chrono::milliseconds timeout = std::chrono::milliseconds(250));
     std::string getVersion();
