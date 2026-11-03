@@ -1,10 +1,10 @@
-# C++ API 与线程契约
+# 使用 C++ API
 
 [文档索引](README.md) · [安装消费](INSTALL.md) · [Session](SESSION.md)
 
 安装后使用 `#include <linkerta/LinkerArm.h>` 和 `#include <linkerta/ArmProtocol.h>`，链接 `linkerta::core`。核心 API 不依赖 ROS2；真实 SocketCAN I/O 仅在 Linux 可用。
 
-## 请求与缓存是不同操作
+## 读取新快照和缓存
 
 - `readJointState(timeout)` 发起一次请求，等待四块完整的新快照；默认 250 ms。超时、发送失败、断线或需要身份重验时抛异常。等待请求槽、发送和接收共用该请求的 deadline。
 - `latestSnapshot()` 复制缓存并检查 Session 状态和路由溢出，不发查询。必须检查 `valid` 与 `isFresh(now, max_age)`；超时后缓存可能仍是上一份有效快照，因此不能把缓存当作新测量。
@@ -15,7 +15,7 @@
 
 `ArmSnapshot` 包含 14 个 `positions_degrees`、`faults` 与 `fault_valid`、四块的 `received_at`、最新到达时间 `captured_at`、`sequence`、`generation`、`received_mask` 和 `valid`。时间使用 steady clock；`isFresh` 检查所有组成帧，包括最老的一帧。
 
-下例会打开真实设备；先按安装指南配置接口：
+下面的程序会打开 `can0`。运行前，需要按安装指南配置好接口：
 
 ```cpp
 #include <linkerta/LinkerArm.h>
@@ -32,7 +32,7 @@ int main() {
 }
 ```
 
-异常应由应用捕获并转为其错误策略；这个最小示例没有实现服务级重试、日志或进程监管。
+示例只演示读取。实际应用还需要捕获异常，决定如何记录错误和停止业务；不要直接在外层套上无限重试。
 
 ## Session 注入与所有权
 
@@ -45,13 +45,13 @@ int main() {
 
 同一 Session 的标准 ID `0x64..0x68` 精确路由不能被第二个 arm 同时占用；不同 endpoint 名称不会解除路由冲突。自建接口/发现构造函数持有其 Session 的生命周期。
 
-所有权不是自动恢复许可：只有显式拥有 Session 的 arm 可以调用 `recover(timeout)`。恢复还要求 Session 具备可重建连接的工厂；`Session::own()` 没有该工厂，即使 `own_session=true` 也不能物理恢复。显式关闭的 Session 不能用 recovery 重开。成功恢复后重建路由、清空旧状态并等待版本回复。外部拥有者恢复共享 Session 后，旧 arm 必须重建，不能继续发布旧 generation 的数据。
+`recover(timeout)` 只能由显式拥有 Session 的 arm 调用，而且 Session 必须带有可重建连接的工厂。`Session::own()` 没有该工厂，即使 `own_session=true` 也不能物理恢复。显式关闭的 Session 不能用 recovery 重开。成功恢复后重建路由、清空旧状态并等待版本回复。外部拥有者恢复共享 Session 后，旧 arm 必须重建，不能继续发布旧 generation 的数据。
 
 ## 并发与退出
 
-内部接收线程与快照锁保护状态复制；请求操作通过请求槽串行化。应用不应在仍有其他线程访问 arm 时销毁对象。析构会等待接收线程，ROS2 节点还会等待当前 worker 请求结束。
+接收线程更新状态时会加锁，读取快照也使用同一把锁。多个请求通过请求槽依次执行。销毁 arm 前，应先停止其他线程对它的访问；析构会等待接收线程退出，ROS2 节点还会等待 worker 当前的请求结束。
 
-队列 deadline 和取消不能强制打断已进入的第三方驱动/系统调用；不要据此承诺硬实时退出时限。应用的关闭顺序应为：停止新任务、停止 executor/调用方、等待在途请求、销毁 arm，最后由所有者关闭共享 Session。
+请求 deadline 限制等待预算，取消可以阻止尚未发送的工作，但都无法强行打断已经进入的第三方驱动或系统调用，因此退出时间没有硬实时保证。关闭应用时依次执行：停止新任务、停止 executor/调用方、等待在途请求、销毁 arm，最后由所有者关闭共享 Session。
 
 ## 标定
 

@@ -12,6 +12,15 @@ function(run_checked)
 endfunction()
 run_checked("@CMAKE_COMMAND@" --install "${build_dir}" --prefix "${prefix}" --config "${CONFIG}")
 file(RENAME "${prefix}" "${relocated}")
+# Check that the installed license texts are the exact source copies.
+foreach(notice IN ITEMS LICENSE THIRD_PARTY_NOTICES.md
+    LICENSES/linkerbot-transport-cpp.MIT.txt
+    LICENSES/linkerbot-transport-cpp.NOTICE.txt
+    LICENSES/GoogleTest.BSD-3-Clause.txt)
+    run_checked("@CMAKE_COMMAND@" -E compare_files
+        "@CMAKE_CURRENT_SOURCE_DIR@/../../${notice}"
+        "${relocated}/@CMAKE_INSTALL_DATADIR@/licenses/linkerta/${notice}")
+endforeach()
 run_checked("${relocated}/@CMAKE_INSTALL_BINDIR@/linkerta@CMAKE_EXECUTABLE_SUFFIX@" --help)
 # An already-installed transport remains an explicit external dependency.
 set(dependency_prefix "@CMAKE_PREFIX_PATH@")

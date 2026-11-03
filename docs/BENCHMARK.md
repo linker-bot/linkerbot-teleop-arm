@@ -1,11 +1,11 @@
-# Measurement harness and outstanding hardware validation
+# Measuring query latency
 
-`linkerta_benchmark` is an opt-in measurement tool. It does not configure CAN,
-calibrate joints, recover the transport, or change the polling implementation.
-The synthetic mode exercises the production `LinkerArm` and Session code through
-`FakeTransport`; its timings are **not physical-device latency or an SLO**.
+Build `linkerta_benchmark` to record query results and latency. It uses the
+existing polling implementation and does not configure CAN, calibrate joints or
+recover the transport. Synthetic mode runs `LinkerArm` and Session through
+`FakeTransport`; use it to check the tool, not to set a hardware latency target.
 
-## Build and synthetic accounting check
+## Build and check synthetic output
 
 ```sh
 cmake -S src/linkerta -B build-benchmark -DCMAKE_BUILD_TYPE=Release \
@@ -16,19 +16,20 @@ ctest --test-dir build-benchmark --output-on-failure --no-tests=error
   --timeout-ms 250 --output synthetic.csv
 ```
 
-Use a new output path for each run. Existing CSV or metadata files are rejected.
-An additional simulation-only `--drop-every 10` omits every tenth complete reply;
-it should produce failure rows, not repeat the previous snapshot. The process
-exits `0` for all-success, `1` if any requests fail, `2` for argument/I/O/setup errors,
-and `128 + signal` after SIGINT/SIGTERM. A failed request does not stop accounting.
-No automatic retries are performed. SIGINT/SIGTERM stop before the next request;
-an in-flight request can finish or reach its deadline first.
+Choose a new output path for each run; existing CSV or metadata files are
+rejected. In simulation, `--drop-every 10` omits every tenth complete reply. Each
+omission should produce a failure row rather than repeat the previous snapshot.
 
-## Hardware run (not performed for this PR)
+Failed requests are recorded without retry, and the run continues. Exit codes
+are `0` when all requests succeed, `1` when any fail, `2` for argument/I/O/setup
+errors, and `128 + signal` after SIGINT/SIGTERM. A signal stops the run before
+the next request; an in-flight request can finish or reach its deadline first.
 
-Configure the existing CAN interface using the deployment steps in `INSTALL.md`.
-Supply a real device identifier and firmware label; the tool refuses implicit
-hardware selection or a hardware run without these labels:
+## Run on hardware
+
+Configure the CAN interface using the deployment steps in `INSTALL.md`. Supply
+its name, a device identifier and a firmware label; all three are required for a
+hardware run:
 
 ```sh
 ./build-benchmark/linkerta_benchmark --interface can0 \
@@ -45,34 +46,36 @@ is an upper bound, with no catch-up burst after a slow request.
 
 ## Output contract
 
-The CSV contains one row per attempted request: elapsed host steady time,
+The CSV records one row per attempted request, with elapsed host steady time,
 request duration in microseconds, success, snapshot sequence/generation, oldest
-frame age and inter-frame skew in microseconds, route pending/high-water/overflow,
-Session pending/high-water/overflow, and a quoted error. Failed requests have no
-snapshot sequence or age fields; generation still records current Session lifetime. Counters are cumulative snapshots, not per-request deltas.
-A successful request means the driver assembled a complete host-consistent
-snapshot; it does not prove simultaneous hardware sampling.
+frame age, inter-frame skew in microseconds, route pending/high-water/overflow,
+Session pending/high-water/overflow, and a quoted error. Failure rows leave
+snapshot sequence and age fields empty but retain the current Session generation.
+Counters are cumulative snapshots rather than per-request deltas.
+
+Success means the driver assembled a complete snapshot under its host-side
+rules. The frames may still come from different hardware sampling cycles.
 
 `OUTPUT.metadata.json` records `synthetic`, `complete`, UTC start, build revision,
-supplied device/firmware labels, observed version text, counts, parameters and
-p50/p95/p99. Percentiles use the nearest-rank method on **successful requests
-only**; no successful samples yields JSON `null`. Always report failures and
-success ratio alongside percentiles. The initial metadata marks `complete=false`
-until the planned number of attempts finishes; interruption or abnormal process
-termination must not be mistaken for a complete run. Revision is `unknown` when
-building outside a Git checkout; record the source revision manually in that case.
+device/firmware labels, observed version text, counts, parameters and p50/p95/p99.
+Percentiles use the nearest-rank method on successful requests only and are JSON
+`null` when none succeed. Report failures and success ratio with the percentiles.
 
-## Acceptance still requiring a physical bench
+Metadata starts with `complete=false` and changes only after all planned attempts
+finish, so interrupted runs remain identifiable. A build outside Git records
+revision `unknown`; supply the source revision with the results.
+
+## Hardware measurements still needed
 
 - Capture raw frames and confirm each firmware's 6/7/8-byte response layouts,
   version encoding, command ACK behavior and minimum request spacing.
-- Fix device, firmware, adapter, host, bus load and request settings; archive raw
-  CSV/metadata and external capture together. Repeat baseline runs before any
-  performance change.
+- Keep device, firmware, adapter, host, bus load and request settings fixed. Save
+  raw CSV/metadata with the external capture and repeat baseline runs before
+  changing performance-sensitive code.
 - Run the agreed long-duration workload (the original plan proposes at least
   eight hours), monitoring complete-snapshot rate, failures, latency percentiles,
   thread/file-descriptor counts and memory growth.
 - Validate disconnect, bus-off and recovery on actual hardware. A vcan or
   FakeTransport result cannot establish electrical behavior or physical ACK.
-- Define a hardware SLO only after these measurements. This PR contains tooling
-  and synthetic accounting checks, not a claim that the physical bench is complete.
+- Set hardware latency and throughput targets from these measurements. The tool
+  and its synthetic checks do not include completed physical bench results.

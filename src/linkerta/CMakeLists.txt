@@ -151,6 +151,13 @@ if(USE_ROS2)
     )
 endif()
 
+# Keep project and bundled dependency notices with installed binaries.
+set(LINKERTA_LICENSE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../")
+install(FILES "${LINKERTA_LICENSE_DIR}/LICENSE" "${LINKERTA_LICENSE_DIR}/THIRD_PARTY_NOTICES.md"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/linkerta COMPONENT Runtime)
+install(DIRECTORY "${LINKERTA_LICENSE_DIR}/LICENSES/"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/linkerta/LICENSES COMPONENT Runtime)
+
 # Install the public core API and a relocatable imported target.
 install(TARGETS linkerta_core EXPORT linkertaTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

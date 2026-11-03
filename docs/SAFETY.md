@@ -1,33 +1,31 @@
-# Runtime and calibration safety boundaries
+# Runtime and calibration behavior
 
 ## Interface configuration
 
-The process opens preconfigured CAN interfaces. Configure bitrate and bring the
-chosen interface up outside the process. The library does not run `sudo`, `ip`,
-`chmod` or modify other interfaces. The core bitrate argument is checked for a
-positive value but is not applied to the operating system. CLI and ROS parameter
-validation happen before their hardware construction paths.
+Configure bitrate and bring the CAN interface up before starting the process.
+The library opens that interface without running `sudo`, `ip` or `chmod`, or
+modifying other interfaces. Its bitrate argument must be positive but is not
+applied to the operating system. The CLI and ROS node validate their parameters
+before opening hardware.
 
-The production factory opens classic SocketCAN on Linux. Protocol and Session
-code can be exercised on other platforms with injected transports; that does not
-provide a native non-Linux SocketCAN backend.
+The factory opens classic SocketCAN on Linux. Other platforms can run protocol
+and Session code with injected transports, but have no native SocketCAN backend.
 
 ## Frames and cached state
 
-Classic transmit payloads larger than eight bytes and invalid standard IDs are
-rejected. The production SocketCAN backend filters RTR/error frames and normalizes
-native classic receive length to its eight-byte capacity. The device codec checks
-the normalized ID, flags and required reply lengths. A malformed raw DLC is not
-necessarily observable after backend normalization. See [PROTOCOL.md](PROTOCOL.md)
-for the accepted six-, seven- and eight-byte reply variants.
+The driver rejects classic transmit payloads over eight bytes and invalid
+standard IDs. On reception, SocketCAN filters RTR/error frames and caps native
+classic lengths at eight bytes. The codec checks the resulting ID, flags and
+reply length; it cannot detect a raw DLC already changed by normalization.
+Accepted six-, seven- and eight-byte replies are listed in
+[PROTOCOL.md](PROTOCOL.md).
 
-Only a complete four-block response becomes a snapshot. New reads throw on
-failure; they do not return the previous pose as a successful response. Explicit
-cached reads can still expose an older valid snapshot after a response timeout.
-Consumers must check age and fault validity as well as `valid`. Missing fault
-bits mean unknown, not healthy. Session close/fault, generation changes and
-observed inbox overflow invalidate committed data. Standard ROS publications use
-radians; the compatibility topics deliberately retain degrees.
+Only a complete four-block response becomes a snapshot. A failed new read
+throws, while a cached read can still return an older valid snapshot after a
+response timeout. Check its age and fault validity as well as `valid`; absent
+fault bits mean unknown. Session close/fault, generation changes and observed
+inbox overflow invalidate committed data. Standard ROS topics use radians;
+compatibility topics retain degrees.
 
 ## Explicit calibration only
 
@@ -37,20 +35,17 @@ send `0xC0` with one index byte, while `255` sends an empty `0xC1`. It invalidat
 the cached snapshot before attempting transmission. Library callers can invoke
 this operation repeatedly; the core API does not impose a one-time guard.
 
-The ROS `~/calibrate_once` service adds a per-node guard. It is disabled unless
-`allow_calibration=true` was set at startup. The first permitted request consumes
-the guard before its command is queued; failure or uncertain delivery does not
-restore it. The worker attempts the configured `calibration_joint` once, and
-there is no automatic retry or replay during recovery. A restarted process has a
-new guard, but does not calibrate unless a new explicit service request arrives.
-This guard is in memory; it is not a persistent acknowledgment or idempotency key.
+The ROS `~/calibrate_once` service is disabled unless startup configuration sets
+`allow_calibration=true`. Its first permitted request consumes a per-node guard
+before queuing the command. The worker attempts `calibration_joint` once; failure,
+uncertain delivery and recovery do not trigger another attempt. Restarting resets
+the guard, but a new explicit service request is still required. The guard is
+stored only in memory, not as a persistent acknowledgment or idempotency key.
 
-No implemented protocol reply confirms calibration completion. A dispatched
-command means local backend acceptance only, so even a queued ROS service request
-returns `success=false` with an explanation that device completion is unconfirmed.
-Its message and diagnostics distinguish queuing/attempt outcomes; neither proves
-the device's final pose. Resolve uncertain delivery by an operator-approved device
-check rather than blindly resending.
+Calibration completion has no implemented reply. Even an accepted ROS service
+request returns `success=false` because queuing or dispatch cannot confirm device
+completion. Read the message and diagnostics for the attempt's status, then use
+an operator-approved device check to resolve uncertain delivery before resending.
 
 ## Lifetime and hardware limits
 
@@ -61,9 +56,8 @@ its endpoint; only the agreed owner closes or recovers a shared Session. Driver
 calls already entered can delay cancellation, recovery and shutdown beyond a
 requested deadline. See [SESSION.md](SESSION.md) for the exact ownership contract.
 
-FakeTransport, adopted datagram sockets and Linux vcan tests validate software
-behavior without moving hardware. They cannot establish physical CAN ACK,
-termination, bus-off behavior, firmware response timing or successful calibration.
-The short lifecycle regression is not evidence of an eight-hour soak. Follow
-[SOAK.md](SOAK.md) and [BENCHMARK.md](BENCHMARK.md) for the separate device
-validation procedure and retain actual results before making performance claims.
+FakeTransport, adopted datagram sockets and Linux vcan test software behavior
+without moving hardware. Physical CAN ACK, termination, bus-off, firmware timing
+and calibration completion need device tests. Use [SOAK.md](SOAK.md) and
+[BENCHMARK.md](BENCHMARK.md) to collect those results; the short lifecycle test
+does not establish eight-hour stability.

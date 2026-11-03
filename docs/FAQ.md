@@ -3,7 +3,7 @@
 ## 构建需要什么？
 
 核心要求 C++17、CMake 3.18+ 和 Threads。硬件后端使用 Linux SocketCAN；
-macOS 可构建核心、CLI 帮助和模拟测试。ROS2 当前 CI 验证 Humble，不能据此保证其他发行版。
+macOS 可构建核心、CLI 帮助和模拟测试。ROS2 CI 使用 Humble，其他发行版还没有同等验证。
 
 ```sh
 ./build.sh core
@@ -17,11 +17,11 @@ ROS2 构建前先加载环境，再执行 `./build.sh ros2`。完整安装、离
 
 默认构建会下载固定提交的 transport；GoogleTest 仅测试构建需要。
 离线环境预安装依赖，将其前缀加入 `CMAKE_PREFIX_PATH`，并设置
-`LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF`。不要靠跳过失败测试确认构建正常。
+`LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF`。缺失依赖会让配置失败，需要补齐后重新构建和测试。
 
 ## 怎样选择 CAN 接口和频率？
 
-CLI 无需改代码：
+通过 CLI 参数选择接口，无需修改代码：
 
 ```sh
 linkerta --help
@@ -60,7 +60,7 @@ ros2 topic echo /diagnostics
 ```
 
 首次未取得四个响应块、超时、缺帧或结果陈旧时，节点停止发布位置，避免重复旧数据。
-先查看诊断和总线状态，不要把未发布当作关节零位。故障位缺失表示 unknown，不表示正常。
+此时可以查看诊断和总线状态。没有消息不能解释为关节处于零位；缺失的故障位会标为 unknown，也不能解释为正常。
 
 ## 怎样标定？为什么服务返回 success=false？
 
@@ -69,8 +69,8 @@ ros2 topic echo /diagnostics
 `calibration_joint` 指定 0–13 或 255（全部）。每个进程最多尝试一次，失败也不自动重试。
 
 协议没有已确认的设备完成 ACK，所以 Trigger 返回 `success=false`，并通过 message 和
-诊断说明排队或发送状态。它不自动意味着命令没发出，也不能声称设备已经完成。
-不要因为 false 就循环调用、重启重试；应按设备规程确认实际状态。见
+诊断说明排队或发送状态。此时命令可能已经发出，只是无法确认设备是否完成。
+因此收到 false 后不应循环调用或重启重试，应先按设备规程确认实际状态。见
 [SAFETY.md](SAFETY.md) 和 [PROTOCOL.md](PROTOCOL.md)。
 
 ## 核心 API 应如何读取状态？
