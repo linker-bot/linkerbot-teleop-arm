@@ -95,11 +95,11 @@ if(USE_ROS2)
     
     add_library(linkerta_ros src/TeleArmNode.cpp)
     target_link_libraries(linkerta_ros PUBLIC linkerta_core)
-    ament_target_dependencies(linkerta_ros rclcpp std_msgs sensor_msgs diagnostic_msgs std_srvs)
+    ament_target_dependencies(linkerta_ros PUBLIC rclcpp std_msgs sensor_msgs diagnostic_msgs std_srvs)
 
     add_executable(linkerta_node src/main_ros2.cpp)
     target_link_libraries(linkerta_node PRIVATE linkerta_ros)
-    ament_target_dependencies(linkerta_node rclcpp)
+    ament_target_dependencies(linkerta_node PUBLIC rclcpp)
 
 endif()
 
