@@ -1,206 +1,407 @@
 #include "LinkerArm.h"
+#include "SessionFactory.h"
+#include <cstdio>
 
-namespace LinkerArm
-{
+#include <algorithm>
+#include <iostream>
+#include <optional>
+#include <sstream>
+#include <stdexcept>
 
-LinkerArm::LinkerArm(const std::string device_type) : running(true)
-{
-    joint_position.resize(14, 0.0);
-    joint_error_code.resize(14, false);
-
-    bus = std::make_unique<Communication::CanBus>(device_type);
-    receiveThread = std::thread(&LinkerArm::receiveResponse, this);
-    
-    bus->send({}, FRAME_PROPERTY::LINKER_HAND_VERSION);
+namespace LinkerArm {
+namespace transport = linkerbot::transport;
+namespace {
+Protocol::TimePoint deadlineAfter(std::chrono::milliseconds timeout) {
+    if (timeout.count() <= 0)
+        throw std::invalid_argument("timeout must be positive");
+    const auto now = Protocol::Clock::now();
+    const auto maximum =
+        std::chrono::duration_cast<std::chrono::milliseconds>(Protocol::Clock::duration::max());
+    if (timeout >= maximum)
+        throw std::invalid_argument("timeout exceeds clock range");
+    const auto wait = std::chrono::duration_cast<Protocol::Clock::duration>(timeout);
+    if (now.time_since_epoch() > Protocol::Clock::duration::max() - wait)
+        throw std::invalid_argument("timeout exceeds deadline range");
+    return now + wait;
 }
-
-LinkerArm::LinkerArm(const std::string &canChannel, int baudrate) : running(true)
-{
-    joint_position.resize(14, 0.0);
-    joint_error_code.resize(14, false);
-    
-    bus = std::make_unique<Communication::CanBus>(canChannel, baudrate);
-    receiveThread = std::thread(&LinkerArm::receiveResponse, this);
-    
-    bus->send({}, FRAME_PROPERTY::LINKER_HAND_VERSION);
+SessionOptions ownedOptions() {
+    SessionOptions options;
+    options.own_session = true;
+    return options;
 }
-
-LinkerArm::~LinkerArm()
-{
-    running = false;
-    if (receiveThread.joinable()) {
-        receiveThread.join();
-    }
+std::string newEndpoint() {
+    static std::atomic<std::uint64_t> next{0};
+    return "tele-arm-" + std::to_string(next.fetch_add(1));
 }
+const std::vector<transport::RouteKey> routes{
+    {0x64, false}, {0x65, false}, {0x66, false}, {0x67, false}, {0x68, false}};
+} // namespace
 
-void LinkerArm::printJointInfo() {
-    #if 0
-    std::cout << "\033[2J\033[H" << std::flush << std::endl;
-    for (size_t i = 0; i < joint_position.size(); i++) {
-        // if (i == 7) std::cout << "---------------------" << std::endl;
-        std::cout << i << " : " << joint_position[i] << "  |  " << (joint_error_code[i] ? "FAULT" : "OK") << std::endl;
-    }
-    #endif
-    
-    #if 1
-    static std::vector<float> pos_last;
-    static std::vector<bool>   err_last;
-    static std::mutex          print_mtx;
-    std::lock_guard<std::mutex> lock(print_mtx);
-
-    if (pos_last != joint_position || err_last != joint_error_code) {
-        pos_last = joint_position;
-        err_last = joint_error_code;
-
-        std::cout << "\033[2J\033[H" << std::flush;
-        std::cout << std::endl;
-        
-        for (size_t i = 0; i < pos_last.size(); ++i) {
-            std::cout << std::setw(2) << i << " : "
-                      // << std::fixed << std::setprecision(1) << pos_last[i]
-                      << pos_last[i]
-                      << "  |  "
-                      << (err_last[i] ? "\033[31mFAULT\033[0m" : "\033[32mOK\033[0m")
-                      << '\n';
+class LinkerArm::RequestLease {
+public:
+    explicit RequestLease(LinkerArm &arm,
+                          std::optional<Protocol::TimePoint> deadline = std::nullopt)
+        : arm_(arm) {
+        std::unique_lock<std::mutex> lock(arm_.request_mutex_);
+        const auto available = [&] { return !arm_.request_active_; };
+        if (deadline) {
+            if (!arm_.request_available_.wait_until(lock, *deadline, available))
+                throw std::runtime_error("joint request queue timeout");
+        } else {
+            arm_.request_available_.wait(lock, available);
         }
-        std::cout << std::flush;
+        arm_.request_active_ = true;
     }
-    #endif
-}
-
-std::vector<bool> LinkerArm::getJointErrorCode() 
-{
-    std::lock_guard<std::mutex> lock(err_mtx);
-    return joint_error_code;
-}
-
-std::vector<float> LinkerArm::getJointPosition() 
-{
-    // bus->send({}, FRAME_PROPERTY::GET_JOINT_POSITION_1);
-    // bus->send({}, FRAME_PROPERTY::GET_JOINT_POSITION_2);
-    bus->send({}, FRAME_PROPERTY::GET_JOINT_POSITION);
-    
-    std::lock_guard<std::mutex> lock(pos_mtx);
-    return joint_position;
-}
-
-std::string LinkerArm::getVersion() 
-{
-    std::stringstream ss;
-    if (version.size() > 0) {
-        int major = version[0] / 100;
-        int minor = (version[0] % 100) / 10;
-        int patch = version[0] % 10;
-        ss << "Hardware Version: v" << major << '.' << minor << '.' << patch << std::endl;
-        ss << "Software Version: v" << "1.0.3";
+    ~RequestLease() {
+        {
+            std::lock_guard<std::mutex> lock(arm_.request_mutex_);
+            arm_.request_active_ = false;
+        }
+        arm_.request_available_.notify_one();
     }
-    return ss.str();
-}
+    RequestLease(const RequestLease &) = delete;
+    RequestLease &operator=(const RequestLease &) = delete;
 
-void LinkerArm::resetZero(const uint8_t joint) 
-{
-    if (joint != 0xFF) {
-        bus->send({joint}, FRAME_PROPERTY::RESET_ZERO_COMMAND_1);
-    } else {
-        bus->send({}, FRAME_PROPERTY::RESET_ZERO_COMMAND_2);
+private:
+    LinkerArm &arm_;
+};
+
+LinkerArm::LinkerArm(const std::string &device)
+    : LinkerArm(discoverArmSession(device), ownedOptions()) {}
+LinkerArm::LinkerArm(const std::string &name, int bitrate)
+    : LinkerArm(makeSocketSession(name, bitrate), ownedOptions()) {}
+LinkerArm::LinkerArm(std::shared_ptr<transport::Session> session)
+    : LinkerArm(std::move(session), SessionOptions{}) {}
+LinkerArm::LinkerArm(std::shared_ptr<transport::Session> session, SessionOptions options)
+    : session_(std::move(session)), options_(std::move(options)) {
+    if (!session_)
+        throw std::invalid_argument("null Session");
+    if (!options_.receive_capacity || options_.transmit_gap.count() < 0)
+        throw std::invalid_argument("invalid Session queue capacity or transmit pacing");
+    const auto deadline = deadlineAfter(options_.command_timeout);
+    if (options_.transmit_gap >
+        std::chrono::duration_cast<std::chrono::microseconds>(options_.command_timeout))
+        throw std::invalid_argument("transmit pacing exceeds command timeout");
+    if (options_.endpoint.empty())
+        options_.endpoint = newEndpoint();
+    generation_ = session_->health().generation;
+    assembler_.reset(generation_);
+    // Route conflicts fail before any command or worker is created. In particular,
+    // failure must never cancel a pre-existing client's work on a shared Session.
+    inbox_ = session_->subscribe_routes(routes, options_.receive_capacity);
+    running_ = true;
+    try {
+        reader_ = std::thread(&LinkerArm::receiveResponse, this);
+        sendFrame(LINKER_HAND_VERSION, {}, deadline);
+    } catch (...) {
+        stopReader();
+        if (options_.own_session) {
+            try {
+                session_->close();
+            } catch (...) {
+                std::fputs("LinkerArm: failed to close Session after construction failure\n",
+                           stderr);
+            }
+        }
+        throw;
     }
 }
 
-std::string LinkerArm::getCurrentTime()
-{
-    auto now = std::chrono::high_resolution_clock::now();
-    
-    std::time_t time = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
-    
-    auto duration = now.time_since_epoch();
-    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration % std::chrono::seconds(1)).count();
-    int milliseconds = microseconds / 1000;
-    ss << "." << std::setfill('0') << std::setw(3) << milliseconds;
-    // ss << "." << std::setfill('0') << std::setw(6) << microseconds;
-    // std::cout << "send time: " << ss.str() << std::endl;
-
-    return ss.str();
-}
-
-void LinkerArm::receiveResponse()
-{
-    while (running) {
+LinkerArm::~LinkerArm() {
+    stopReader();
+    try {
+        session_->cancel_endpoint(options_.endpoint);
+    } catch (...) {
+        std::fputs("LinkerArm: failed to cancel endpoint during destruction\n", stderr);
+    }
+    if (options_.own_session) {
         try {
-            auto frame = bus->recv();
-            
-            if (frame.can_dlc == 0) continue;
-            
-            std::vector<uint8_t> data(frame.data, frame.data + frame.can_dlc);
-            uint8_t frame_property = data[0];
-            std::vector<uint8_t> payload(data.begin(), data.end());
-            
-            if (RECV_DEBUG) {
-                static std::string hand_str = "ARM";
-            std::cout << "\033[1;32m# " << hand_str << "-Recv\033[0m " << getCurrentTime() << " | can_id:" << std::hex << frame.can_id << std::dec << " can_dlc:" << (int)frame.can_dlc << " data:";
-                for (auto &can : data) std::cout << std::hex << (int)can << std::dec << " ";
-                std::cout << std::endl;
-            }
-            
-            if (frame.can_id == FRAME_PROPERTY::LEFT_JOINT_POSITION_2 || frame.can_id == FRAME_PROPERTY::RIGHT_JOINT_POSITION_2) {
-                int base = (frame.can_id == FRAME_PROPERTY::LEFT_JOINT_POSITION_2) ? 0 : 7;
-                std::lock_guard<std::mutex> lock(err_mtx);
-                if (frame.can_dlc >= 7) {
-                    uint8_t fault_byte = frame.data[6];
-                    for (int i = 0; i < 7; ++i) {
-                        bool is_fault = (fault_byte >> i) & 0x01;
-                        // printf("Joint %d: %s\n", base + i, is_fault ? "FAULT" : "OK");
-                        joint_error_code[base + i] = is_fault;
-                    }
-                } else if (frame.can_dlc == 6) {
-                    for (int i = 0; i < 7; ++i) {
-                        joint_error_code[base + i] = false;
-                    }
-                }
-            }
-            
-            std::lock_guard<std::mutex> lock(pos_mtx);
-            switch(frame.can_id) {
-                case FRAME_PROPERTY::LEFT_JOINT_POSITION_1:
-                    joint_position[0] = bytesToInt16(joint_position[0], frame.data[0], frame.data[1]);
-                    joint_position[1] = bytesToInt16(joint_position[1], frame.data[2], frame.data[3]);
-                    joint_position[2] = bytesToInt16(joint_position[2], frame.data[4], frame.data[5]);
-                    joint_position[3] = bytesToInt16(joint_position[3], frame.data[6], frame.data[7]);
-                    break;
-                case FRAME_PROPERTY::LEFT_JOINT_POSITION_2:
-                    joint_position[4] = bytesToInt16(joint_position[4], frame.data[0], frame.data[1]);
-                    joint_position[5] = bytesToInt16(joint_position[5], frame.data[2], frame.data[3]);
-                    joint_position[6] = bytesToInt16(joint_position[6], frame.data[4], frame.data[5]);
-                    break;
-                case FRAME_PROPERTY::RIGHT_JOINT_POSITION_1:
-                    joint_position[7] = bytesToInt16(joint_position[7], frame.data[0], frame.data[1]);
-                    joint_position[8] = bytesToInt16(joint_position[8], frame.data[2], frame.data[3]);
-                    joint_position[9] = bytesToInt16(joint_position[9], frame.data[4], frame.data[5]);
-                    joint_position[10] = bytesToInt16(joint_position[10], frame.data[6], frame.data[7]);
-                    break;
-                case FRAME_PROPERTY::RIGHT_JOINT_POSITION_2:
-                    joint_position[11] = bytesToInt16(joint_position[11], frame.data[0], frame.data[1]);
-                    joint_position[12] = bytesToInt16(joint_position[12], frame.data[2], frame.data[3]);
-                    joint_position[13] = bytesToInt16(joint_position[13], frame.data[4], frame.data[5]);
-                    break;
-                case FRAME_PROPERTY::RESET_ZERO_COMMAND_1:
-
-                    break;
-                case FRAME_PROPERTY::RESET_ZERO_COMMAND_2:
-                   
-                    break;
-                case FRAME_PROPERTY::LINKER_HAND_VERSION:
-                    version = payload;
-                    break;
-                default:
-                    // if (RECV_DEBUG) std::cout << "Unknown data type: " << std::hex << (int)frame_property << std::endl;
-                    continue;
-            }
-        } catch (const std::runtime_error &e) {
-            // std::cerr << "Error receiving data: " << e.what() << std::endl;
+            session_->close();
+        } catch (...) {
+            std::fputs("LinkerArm: failed to close owned Session during destruction\n", stderr);
         }
     }
 }
+void LinkerArm::stopReader() noexcept {
+    running_ = false;
+    std::shared_ptr<transport::RouteInbox> inbox;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        inbox = inbox_;
+        pending_query_ = false;
+    }
+    if (inbox)
+        inbox->close();
+    updated_.notify_all();
+    if (reader_.joinable())
+        reader_.join();
 }
 
+void LinkerArm::sendFrame(std::uint32_t id, const std::vector<std::uint8_t> &data,
+                          Protocol::TimePoint deadline) {
+    if (id > 0x7ff || data.size() > 8)
+        throw std::invalid_argument("invalid classic CAN command");
+    linkerbot::can::Message message;
+    message.id = id;
+    message.dlc = static_cast<std::uint8_t>(data.size());
+    std::copy(data.begin(), data.end(), message.data.begin());
+    transport::MessageBatch batch;
+    batch.frames.push_back(message);
+    // A single-frame batch has no inter-frame gap. Pacing is deliberately before
+    // each command so the Session's writer enforces the legacy minimum interval.
+    batch.initial_delay = options_.transmit_gap;
+    transport::CancellationSource cancellation;
+    transport::SendOptions options;
+    options.deadline = deadline;
+    options.cancellation = cancellation.token();
+    options.endpoint = options_.endpoint;
+    options.family = std::to_string(id);
+    options.policy = transport::SendPolicy::fifo;
+    try {
+        const auto receipt = session_->submit(std::move(batch), std::move(options));
+        const auto result = receipt.wait_until(deadline);
+        if (result.outcome != transport::SendOutcome::dispatched ||
+            Protocol::Clock::now() >= deadline)
+            throw linkerbot::can::TimeoutError("command did not dispatch within deadline");
+    } catch (...) {
+        // A wait timeout alone does not cancel Session work. This token cancels
+        // only this command; an in-flight backend write may still have happened.
+        cancellation.cancel();
+        throw;
+    }
+}
+
+void LinkerArm::invalidate(const std::string &message, std::uint64_t generation) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    generation_ = generation;
+    assembler_.reset(generation);
+    version_.clear();
+    error_ = message;
+    identity_required_ = true;
+    pending_query_ = false;
+    updated_.notify_all();
+}
+void LinkerArm::refreshSessionState() {
+    // Keep the health observation and generation update ordered against an
+    // owner's concurrent recovery. A stale pre-lock observation must not roll
+    // a freshly recovered generation back.
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    const auto health = session_->health();
+    const auto physical = session_->transport_health();
+    const bool changed = health.generation != generation_;
+    if (changed || !health.open || physical.state == linkerbot::can::TransportState::kFaulted) {
+        generation_ = health.generation;
+        assembler_.reset(generation_);
+        version_.clear();
+        error_ = changed ? "Session generation changed; reconstruct or recover the arm client"
+                         : "Session is closed or faulted";
+        identity_required_ = true;
+        pending_query_ = false;
+        updated_.notify_all();
+    }
+}
+void LinkerArm::observeOverflow() {
+    // Keep the inbox identity and overflow counter from the same generation.
+    // Otherwise a late observation from a closed route could invalidate a
+    // newly recovered snapshot.
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    const auto health = inbox_->health();
+    if (health.overflow != observed_overflow_) {
+        observed_overflow_ = health.overflow;
+        assembler_.reset(generation_);
+        error_ = "Session receive route overflow; incomplete snapshot discarded";
+        pending_query_ = false;
+        updated_.notify_all();
+    }
+}
+Protocol::ArmSnapshot LinkerArm::latestSnapshot() {
+    refreshSessionState();
+    observeOverflow();
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return assembler_.latest();
+}
+Protocol::ArmSnapshot LinkerArm::readJointState(std::chrono::milliseconds timeout) {
+    const auto deadline = deadlineAfter(timeout);
+    RequestLease request(*this, deadline);
+    refreshSessionState();
+    observeOverflow();
+    std::unique_lock<std::mutex> lock(state_mutex_);
+    if (!running_ || identity_required_)
+        throw std::runtime_error(error_.empty() ? "arm identity requires revalidation" : error_);
+    if (Protocol::Clock::now() >= deadline)
+        throw linkerbot::can::TimeoutError("joint request queue timeout");
+    const auto sequence = assembler_.latest().sequence;
+    const auto generation = generation_;
+    assembler_.beginCycle(Protocol::Clock::now());
+    error_.clear();
+    query_deadline_ = deadline;
+    pending_query_ = true;
+    lock.unlock();
+    try {
+        sendFrame(GET_JOINT_POSITION, {}, deadline);
+    } catch (const std::exception &error) {
+        lock.lock();
+        pending_query_ = false;
+        assembler_.reset(generation_);
+        error_ = error.what();
+        throw;
+    }
+    lock.lock();
+    if (!updated_.wait_until(lock, deadline, [&] {
+            const auto snapshot = assembler_.latest();
+            return (snapshot.valid && snapshot.sequence > sequence &&
+                    snapshot.generation == generation) ||
+                   !error_.empty() || !running_;
+        })) {
+        pending_query_ = false;
+        throw linkerbot::can::TimeoutError("joint response timeout");
+    }
+    pending_query_ = false;
+    if (!error_.empty())
+        throw std::runtime_error(error_);
+    if (!running_)
+        throw std::runtime_error("arm stopped");
+    return assembler_.latest();
+}
+std::vector<float> LinkerArm::getJointPosition() {
+    const auto snapshot = readJointState();
+    return {snapshot.positions_degrees.begin(), snapshot.positions_degrees.end()};
+}
+std::vector<bool> LinkerArm::getJointErrorCode() {
+    const auto snapshot = latestSnapshot();
+    return std::vector<bool>(snapshot.faults.begin(), snapshot.faults.end());
+}
+std::string LinkerArm::getVersion() {
+    refreshSessionState();
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (version_.empty())
+        return {};
+    std::ostringstream out;
+    out << "Hardware Version: v" << int(version_[0]) / 100 << '.' << (int(version_[0]) % 100) / 10
+        << '.' << int(version_[0]) % 10;
+    return out.str();
+}
+std::string LinkerArm::lastError() {
+    refreshSessionState();
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return error_;
+}
+void LinkerArm::resetZero(std::uint8_t joint) {
+    if (joint != 0xff && joint >= 14)
+        throw std::invalid_argument("joint must be 0..13 or 255");
+    const auto deadline = deadlineAfter(options_.command_timeout);
+    RequestLease request(*this, deadline);
+    refreshSessionState();
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        if (!running_ || identity_required_)
+            throw std::runtime_error("arm identity requires revalidation");
+        pending_query_ = false;
+        assembler_.reset(generation_);
+    }
+    sendFrame(joint == 0xff ? RESET_ZERO_COMMAND_2 : RESET_ZERO_COMMAND_1,
+              joint == 0xff ? std::vector<std::uint8_t>{} : std::vector<std::uint8_t>{joint},
+              deadline);
+}
+void LinkerArm::printJointInfo() {
+    const auto snapshot = latestSnapshot();
+    if (!snapshot.valid)
+        return;
+    for (std::size_t i = 0; i < snapshot.positions_degrees.size(); ++i)
+        std::cout << i << " : " << snapshot.positions_degrees[i] << " | "
+                  << (snapshot.fault_valid[i] ? (snapshot.faults[i] ? "FAULT" : "OK") : "UNKNOWN")
+                  << '\n';
+}
+
+std::uint64_t LinkerArm::recover(std::chrono::milliseconds timeout) {
+    if (!options_.own_session)
+        throw std::logic_error(
+            "only the Session owner may recover; reconstruct after external recovery");
+    const auto deadline = deadlineAfter(timeout);
+    RequestLease request(*this, deadline);
+    if (Protocol::Clock::now() >= deadline)
+        throw linkerbot::can::TimeoutError("recovery request queue timeout");
+    const auto observed = session_->health().generation;
+    stopReader();
+    session_->cancel_endpoint(options_.endpoint);
+    invalidate("arm identity requires revalidation", observed);
+    const auto generation = session_->recover(observed);
+    auto inbox = session_->subscribe_routes(routes, options_.receive_capacity);
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        inbox_ = std::move(inbox);
+        observed_overflow_ = 0;
+        generation_ = generation;
+        assembler_.reset(generation);
+        error_.clear();
+        version_.clear();
+        identity_required_ = true;
+    }
+    running_ = true;
+    reader_ = std::thread(&LinkerArm::receiveResponse, this);
+    sendFrame(LINKER_HAND_VERSION, {}, deadline);
+    std::unique_lock<std::mutex> lock(state_mutex_);
+    if (!updated_.wait_until(lock, deadline,
+                             [&] { return !identity_required_ || !error_.empty() || !running_; }))
+        throw linkerbot::can::TimeoutError("recovered arm did not confirm its identity");
+    if (identity_required_)
+        throw std::runtime_error(error_.empty() ? "recovered arm unavailable" : error_);
+    return generation;
+}
+transport::SessionHealth LinkerArm::sessionHealth() const {
+    return session_->health();
+}
+transport::RouteHealth LinkerArm::routeHealth() const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return inbox_->health();
+}
+
+void LinkerArm::receiveResponse() {
+    while (running_) {
+        try {
+            refreshSessionState();
+            observeOverflow();
+            {
+                std::lock_guard<std::mutex> lock(state_mutex_);
+                if (identity_required_ && !error_.empty())
+                    break;
+            }
+            const auto received =
+                inbox_->receive_until(Protocol::Clock::now() + std::chrono::milliseconds(20));
+            if (!received)
+                continue;
+            Protocol::Frame frame;
+            frame.can_id = received->message.id;
+            frame.dlc = received->message.dlc;
+            frame.is_extended = received->message.is_extended;
+            frame.is_fd = received->message.is_fd;
+            std::copy_n(received->message.data.begin(), frame.data.size(), frame.data.begin());
+            const auto decoded = Protocol::decodeFrame(frame);
+            if (!decoded.frame)
+                continue;
+            observeOverflow();
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            if (received->generation != generation_)
+                continue;
+            if (decoded.frame->kind == Protocol::FrameKind::version) {
+                version_.assign(decoded.frame->version_bytes.begin(),
+                                decoded.frame->version_bytes.begin() + decoded.frame->version_size);
+                identity_required_ = false;
+                updated_.notify_all();
+            } else if (!identity_required_ && pending_query_ &&
+                       received->received_at <= query_deadline_ &&
+                       assembler_.ingest(*decoded.frame, received->received_at)) {
+                pending_query_ = false;
+                updated_.notify_all();
+            }
+        } catch (const std::exception &error) {
+            if (running_) {
+                invalidate(error.what(), session_->health().generation);
+                break;
+            }
+        }
+    }
+    running_ = false;
+    updated_.notify_all();
+}
+} // namespace LinkerArm

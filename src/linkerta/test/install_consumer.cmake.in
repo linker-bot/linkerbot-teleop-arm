@@ -1,0 +1,48 @@
+# Build and execute only from a relocated install tree, never source includes.
+set(build_dir "@CMAKE_CURRENT_BINARY_DIR@")
+set(prefix "${build_dir}/consumer-stage")
+set(relocated "${build_dir}/consumer-relocated")
+set(consumer_build "${build_dir}/consumer-build")
+file(REMOVE_RECURSE "${prefix}" "${relocated}" "${consumer_build}")
+function(run_checked)
+    execute_process(COMMAND ${ARGV} RESULT_VARIABLE result)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Installed consumer command failed (${result}): ${ARGV}")
+    endif()
+endfunction()
+run_checked("@CMAKE_COMMAND@" --install "${build_dir}" --prefix "${prefix}" --config "${CONFIG}")
+file(RENAME "${prefix}" "${relocated}")
+# Check that the installed license texts are the exact source copies.
+foreach(notice IN ITEMS LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.zh-CN.md
+    LICENSES/linkerbot-transport-cpp.MIT.txt
+    LICENSES/linkerbot-transport-cpp.NOTICE.txt
+    LICENSES/GoogleTest.BSD-3-Clause.txt)
+    run_checked("@CMAKE_COMMAND@" -E compare_files
+        "@CMAKE_CURRENT_SOURCE_DIR@/../../${notice}"
+        "${relocated}/@CMAKE_INSTALL_DATADIR@/licenses/linkerta/${notice}")
+endforeach()
+run_checked("${relocated}/@CMAKE_INSTALL_BINDIR@/linkerta@CMAKE_EXECUTABLE_SUFFIX@" --help)
+# An already-installed transport remains an explicit external dependency.
+set(dependency_prefix "@CMAKE_PREFIX_PATH@")
+set(prefixes "${relocated};${dependency_prefix}")
+execute_process(COMMAND "@CMAKE_COMMAND@"
+    -S "${relocated}/@CMAKE_INSTALL_DATADIR@/linkerta/examples/consumer"
+    -B "${consumer_build}"
+    "-DCMAKE_PREFIX_PATH=${prefixes}"
+    "-DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@"
+    "-DCMAKE_CXX_COMPILER=@CMAKE_CXX_COMPILER@"
+    "-DCMAKE_CXX_FLAGS=@CMAKE_CXX_FLAGS@"
+    "-DCMAKE_EXE_LINKER_FLAGS=@CMAKE_EXE_LINKER_FLAGS@"
+    -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF
+    -DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF
+    RESULT_VARIABLE configure_result)
+if(NOT configure_result EQUAL 0)
+    message(FATAL_ERROR "Installed consumer configure failed: ${configure_result}")
+endif()
+run_checked("@CMAKE_COMMAND@" --build "${consumer_build}" --config "${CONFIG}" --parallel 2)
+run_checked("@CMAKE_CTEST_COMMAND@" --test-dir "${consumer_build}" --build-config "${CONFIG}"
+    --output-on-failure --no-tests=error)
+
+if(EXISTS "${relocated}/@CMAKE_INSTALL_BINDIR@/linkerta_benchmark")
+    run_checked("${relocated}/@CMAKE_INSTALL_BINDIR@/linkerta_benchmark" --help)
+endif()

@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.18)
+project(linkerta_installed_consumer LANGUAGES CXX)
+find_package(linkerta CONFIG REQUIRED)
+add_executable(installed_consumer main.cpp)
+target_link_libraries(installed_consumer PRIVATE linkerta::core)
+enable_testing()
+add_test(NAME installed-consumer-runtime COMMAND installed_consumer)
