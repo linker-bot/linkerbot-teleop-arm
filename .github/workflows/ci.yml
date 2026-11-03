@@ -36,8 +36,10 @@ jobs:
         run: |
           source /opt/ros/humble/setup.bash
           colcon build --packages-select linkerta --cmake-args -DUSE_ROS2=ON -DBUILD_TESTING=ON
-          colcon test --packages-select linkerta --return-code-on-test-failure
+          test_status=0
+          colcon test --packages-select linkerta --return-code-on-test-failure --event-handlers console_direct+ || test_status=$?
           colcon test-result --verbose
+          exit "$test_status"
 
   formatting:
     runs-on: ubuntu-24.04
