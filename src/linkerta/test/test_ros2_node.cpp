@@ -27,12 +27,14 @@ struct RosArmRig {
     std::atomic<bool> respond{true};
     std::atomic<bool> fail_calibration{false};
     std::atomic<unsigned> calibrations{0};
+    std::atomic<unsigned> queries{0};
     std::shared_ptr<Session> session;
     std::shared_ptr<LinkerArm::LinkerArm> arm;
 
     RosArmRig() {
         auto fake = std::make_unique<FakeTransport>();
         fake->on_request(0x04, [this](const Message &) {
+            ++queries;
             std::vector<Message> replies;
             if (!respond.load())
                 return replies;
@@ -297,6 +299,51 @@ TEST_F(RosNodeTest, CalibrationIsDisabledByDefaultAndNeverRunsAtStartup) {
     EXPECT_EQ(rig.calibrations.load(), 0u);
     executor.remove_node(driver);
     executor.remove_node(caller);
+}
+
+TEST_F(RosNodeTest, BlockedCanReadDoesNotBlockCalibrationRejection) {
+    RosArmRig rig;
+    rig.respond = false;
+    auto driver = std::make_shared<LinkerArm::TeleArmNode>(
+        options({{"poll_rate_hz", 1.0}, {"request_timeout_ms", 2000}}), rig.arm);
+    auto caller = std::make_shared<rclcpp::Node>("responsive_calibration_caller");
+    auto client = caller->create_client<std_srvs::srv::Trigger>("/linkerta_node/calibrate_once");
+    executor.add_node(driver);
+    executor.add_node(caller);
+    ASSERT_TRUE(spinUntil([&] { return client->service_is_ready(); }));
+    ASSERT_TRUE(spinUntil([&] { return rig.queries.load() == 1; }));
+    // No reply will complete this two-second request. The single-threaded
+    // executor must still reject a service request before that deadline.
+    const auto start = std::chrono::steady_clock::now();
+    auto response = client->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
+    ASSERT_TRUE(spinUntil([&] { return response.wait_for(0ms) == std::future_status::ready; }, 1s));
+    EXPECT_FALSE(response.get()->success);
+    EXPECT_LT(std::chrono::steady_clock::now() - start, 1s);
+    EXPECT_EQ(rig.calibrations.load(), 0u);
+    EXPECT_EQ(rig.queries.load(), 1u);
+    executor.remove_node(driver);
+    executor.remove_node(caller);
+}
+
+TEST_F(RosNodeTest, DestructionJoinsAnOutstandingReadAndPreservesBorrowedSession) {
+    RosArmRig rig;
+    rig.respond = false;
+    auto driver =
+        std::make_shared<LinkerArm::TeleArmNode>(options({{"request_timeout_ms", 250}}), rig.arm);
+    executor.add_node(driver);
+    ASSERT_TRUE(spinUntil([&] { return rig.queries.load() == 1; }));
+    executor.remove_node(driver);
+    const auto start = std::chrono::steady_clock::now();
+    driver.reset();
+    // Destruction cancels the timer and joins the worker after its bounded
+    // request deadline. Allow scheduler headroom without accepting a hang.
+    EXPECT_LT(std::chrono::steady_clock::now() - start, 1500ms);
+    EXPECT_EQ(rig.queries.load(), 1u);
+    EXPECT_EQ(rig.calibrations.load(), 0u);
+    rig.respond = true;
+    const auto state = rig.arm->readJointState(1s);
+    EXPECT_TRUE(state.valid);
+    EXPECT_EQ(rig.queries.load(), 2u);
 }
 
 TEST_F(RosNodeTest, AcceptedCalibrationDoesNotClaimDeviceSuccessOrReplay) {
