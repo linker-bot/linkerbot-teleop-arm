@@ -1,224 +1,141 @@
 #include "LinkerArm.h"
-#include <iomanip>
-
+#include <algorithm>
+#include <iostream>
+#include <sstream>
 namespace LinkerArm {
-
-LinkerArm::LinkerArm(const std::string device_type) : running(true) {
-    joint_position.resize(14, 0.0);
-    joint_error_code.resize(14, false);
-
-    bus = std::make_unique<Communication::CanBus>(device_type);
-    bus->send({}, FRAME_PROPERTY::LINKER_HAND_VERSION);
-    receiveThread = std::thread(&LinkerArm::receiveResponse, this);
+LinkerArm::LinkerArm(std::string device)
+    : LinkerArm(std::make_unique<Communication::CanBus>(device)) {}
+LinkerArm::LinkerArm(const std::string &channel, int bitrate)
+    : LinkerArm(std::make_unique<Communication::CanBus>(channel, bitrate)) {}
+LinkerArm::LinkerArm(std::unique_ptr<Communication::ICanBus> bus) : bus_(std::move(bus)) {
+    if (!bus_)
+        throw std::invalid_argument("null transport");
+    bus_->send({}, LINKER_HAND_VERSION);
+    reader_ = std::thread(&LinkerArm::receiveResponse, this);
 }
-
-LinkerArm::LinkerArm(const std::string &canChannel, int baudrate) : running(true) {
-    joint_position.resize(14, 0.0);
-    joint_error_code.resize(14, false);
-
-    bus = std::make_unique<Communication::CanBus>(canChannel, baudrate);
-    bus->send({}, FRAME_PROPERTY::LINKER_HAND_VERSION);
-    receiveThread = std::thread(&LinkerArm::receiveResponse, this);
-}
-
 LinkerArm::~LinkerArm() {
-    running = false;
-    if (receiveThread.joinable()) {
-        receiveThread.join();
-    }
+    running_ = false;
+    updated_.notify_all();
+    if (reader_.joinable())
+        reader_.join();
 }
-
-void LinkerArm::printJointInfo() {
-    std::scoped_lock snapshot_lock(pos_mtx, err_mtx);
-#if 0
-    std::cout << "\033[2J\033[H" << std::flush << std::endl;
-    for (size_t i = 0; i < joint_position.size(); i++) {
-        // if (i == 7) std::cout << "---------------------" << std::endl;
-        std::cout << i << " : " << joint_position[i] << "  |  " << (joint_error_code[i] ? "FAULT" : "OK") << std::endl;
-    }
-#endif
-
-#if 1
-    static std::vector<float> pos_last;
-    static std::vector<bool> err_last;
-    static std::mutex print_mtx;
-    std::lock_guard<std::mutex> lock(print_mtx);
-
-    if (pos_last != joint_position || err_last != joint_error_code) {
-        pos_last = joint_position;
-        err_last = joint_error_code;
-
-        std::cout << "\033[2J\033[H" << std::flush;
-        std::cout << std::endl;
-
-        for (size_t i = 0; i < pos_last.size(); ++i) {
-            std::cout << std::setw(2) << i
-                      << " : "
-                      // << std::fixed << std::setprecision(1) << pos_last[i]
-                      << pos_last[i] << "  |  "
-                      << (err_last[i] ? "\033[31mFAULT\033[0m" : "\033[32mOK\033[0m") << '\n';
-        }
-        std::cout << std::flush;
-    }
-#endif
+Protocol::ArmSnapshot LinkerArm::latestSnapshot() {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return assembler_.latest();
 }
-
-std::vector<bool> LinkerArm::getJointErrorCode() {
-    std::lock_guard<std::mutex> lock(err_mtx);
-    return joint_error_code;
+Protocol::ArmSnapshot LinkerArm::readJointState(std::chrono::milliseconds timeout) {
+    if (timeout.count() <= 0)
+        throw std::invalid_argument("timeout must be positive");
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    std::unique_lock<std::timed_mutex> request(request_mutex_, std::defer_lock);
+    if (!request.try_lock_until(deadline))
+        throw std::runtime_error("joint request queue timeout");
+    std::unique_lock<std::mutex> lock(state_mutex_);
+    auto sequence = assembler_.latest().sequence;
+    assembler_.beginCycle(std::chrono::steady_clock::now());
+    error_.clear();
+    if (std::chrono::steady_clock::now() >= deadline)
+        throw std::runtime_error("joint request queue timeout");
+    query_deadline_ = deadline;
+    pending_query_ = true;
+    lock.unlock();
+    try {
+        bus_->send({}, GET_JOINT_POSITION);
+    } catch (...) {
+        std::lock_guard<std::mutex> guard(state_mutex_);
+        pending_query_ = false;
+        throw;
+    }
+    lock.lock();
+    if (std::chrono::steady_clock::now() >= deadline) {
+        pending_query_ = false;
+        throw std::runtime_error("joint response timeout");
+    }
+    if (!updated_.wait_until(lock, deadline, [&] {
+            return (assembler_.latest().valid && assembler_.latest().sequence > sequence) ||
+                   !error_.empty() || !running_;
+        })) {
+        pending_query_ = false;
+        throw std::runtime_error("joint response timeout");
+    }
+    pending_query_ = false;
+    if (!error_.empty())
+        throw std::runtime_error(error_);
+    if (!running_)
+        throw std::runtime_error("arm stopped");
+    return assembler_.latest();
 }
-
 std::vector<float> LinkerArm::getJointPosition() {
-    // bus->send({}, FRAME_PROPERTY::GET_JOINT_POSITION_1);
-    // bus->send({}, FRAME_PROPERTY::GET_JOINT_POSITION_2);
-    bus->send({}, FRAME_PROPERTY::GET_JOINT_POSITION);
-
-    std::lock_guard<std::mutex> lock(pos_mtx);
-    return joint_position;
+    auto snapshot = readJointState();
+    return {snapshot.positions_degrees.begin(), snapshot.positions_degrees.end()};
 }
-
+std::vector<bool> LinkerArm::getJointErrorCode() {
+    auto snapshot = latestSnapshot();
+    return std::vector<bool>(snapshot.faults.begin(), snapshot.faults.end());
+}
 std::string LinkerArm::getVersion() {
-    std::lock_guard<std::mutex> lock(pos_mtx);
-    std::stringstream ss;
-    if (version.size() > 0) {
-        int major = version[0] / 100;
-        int minor = (version[0] % 100) / 10;
-        int patch = version[0] % 10;
-        ss << "Hardware Version: v" << major << '.' << minor << '.' << patch << std::endl;
-        ss << "Software Version: v" << "1.0.3";
-    }
-    return ss.str();
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (version_.empty())
+        return {};
+    std::ostringstream out;
+    out << "Hardware Version: v" << int(version_[0]) / 100 << '.' << (int(version_[0]) % 100) / 10
+        << '.' << int(version_[0]) % 10;
+    return out.str();
 }
-
-void LinkerArm::resetZero(const uint8_t joint) {
+std::string LinkerArm::lastError() {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return error_;
+}
+void LinkerArm::resetZero(uint8_t joint) {
     if (joint != 0xFF && joint >= 14)
-        throw std::invalid_argument("invalid joint index");
-    if (joint != 0xFF) {
-        bus->send({joint}, FRAME_PROPERTY::RESET_ZERO_COMMAND_1);
-    } else {
-        bus->send({}, FRAME_PROPERTY::RESET_ZERO_COMMAND_2);
+        throw std::invalid_argument("joint must be 0..13 or 255");
+    std::lock_guard<std::timed_mutex> request(request_mutex_);
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        pending_query_ = false;
+        assembler_.reset(assembler_.latest().generation);
     }
+    bus_->send(joint == 0xFF ? std::vector<uint8_t>{} : std::vector<uint8_t>{joint},
+               joint == 0xFF ? RESET_ZERO_COMMAND_2 : RESET_ZERO_COMMAND_1);
 }
-
-std::string LinkerArm::getCurrentTime() {
-    auto now = std::chrono::high_resolution_clock::now();
-
-    std::time_t time = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
-
-    auto duration = now.time_since_epoch();
-    auto microseconds =
-        std::chrono::duration_cast<std::chrono::microseconds>(duration % std::chrono::seconds(1))
-            .count();
-    int milliseconds = microseconds / 1000;
-    ss << "." << std::setfill('0') << std::setw(3) << milliseconds;
-    // ss << "." << std::setfill('0') << std::setw(6) << microseconds;
-    // std::cout << "send time: " << ss.str() << std::endl;
-
-    return ss.str();
+void LinkerArm::printJointInfo() {
+    auto s = latestSnapshot();
+    if (!s.valid)
+        return;
+    for (size_t i = 0; i < 14; ++i)
+        std::cout << i << " : " << s.positions_degrees[i] << " | "
+                  << (s.fault_valid[i] ? (s.faults[i] ? "FAULT" : "OK") : "UNKNOWN") << '\n';
 }
-
 void LinkerArm::receiveResponse() {
-    while (running) {
+    while (running_) {
         try {
-            auto frame = bus->recv();
-
-            if (frame.can_dlc == 0 || frame.can_dlc > 8 || frame.can_id > 0x7ff)
+            auto received = bus_->recv();
+            auto received_at = std::chrono::steady_clock::now();
+            if (!received.can_dlc)
                 continue;
-            if ((frame.can_id == LEFT_JOINT_POSITION_1 || frame.can_id == RIGHT_JOINT_POSITION_1) &&
-                frame.can_dlc != 8)
+            Protocol::Frame frame{};
+            frame.can_id = received.can_id;
+            frame.dlc = received.can_dlc;
+            std::copy_n(received.data, 8, frame.data.begin());
+            auto decoded = Protocol::decodeFrame(frame);
+            if (!decoded.frame)
                 continue;
-            if ((frame.can_id == LEFT_JOINT_POSITION_2 || frame.can_id == RIGHT_JOINT_POSITION_2) &&
-                frame.can_dlc != 6 && frame.can_dlc != 7)
-                continue;
-
-            std::vector<uint8_t> data(frame.data, frame.data + frame.can_dlc);
-            uint8_t frame_property = data[0];
-            std::vector<uint8_t> payload(data.begin(), data.end());
-
-            if (RECV_DEBUG) {
-                static std::string hand_str = "ARM";
-                std::cout << "\033[1;32m# " << hand_str << "-Recv\033[0m " << getCurrentTime()
-                          << " | can_id:" << std::hex << frame.can_id << std::dec
-                          << " can_dlc:" << (int)frame.can_dlc << " data:";
-                for (auto &can : data)
-                    std::cout << std::hex << (int)can << std::dec << " ";
-                std::cout << std::endl;
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            if (decoded.frame->kind == Protocol::FrameKind::version) {
+                version_.assign(decoded.frame->version_bytes.begin(),
+                                decoded.frame->version_bytes.begin() + decoded.frame->version_size);
+            } else if (pending_query_ && received_at <= query_deadline_ &&
+                       assembler_.ingest(*decoded.frame, received_at)) {
+                pending_query_ = false;
+                updated_.notify_all();
             }
-
-            if (frame.can_id == FRAME_PROPERTY::LEFT_JOINT_POSITION_2 ||
-                frame.can_id == FRAME_PROPERTY::RIGHT_JOINT_POSITION_2) {
-                int base = (frame.can_id == FRAME_PROPERTY::LEFT_JOINT_POSITION_2) ? 0 : 7;
-                std::lock_guard<std::mutex> lock(err_mtx);
-                if (frame.can_dlc >= 7) {
-                    uint8_t fault_byte = frame.data[6];
-                    for (int i = 0; i < 7; ++i) {
-                        bool is_fault = (fault_byte >> i) & 0x01;
-                        // printf("Joint %d: %s\n", base + i, is_fault ? "FAULT" : "OK");
-                        joint_error_code[base + i] = is_fault;
-                    }
-                } else if (frame.can_dlc == 6) {
-                    for (int i = 0; i < 7; ++i) {
-                        joint_error_code[base + i] = false;
-                    }
-                }
+        } catch (const std::exception &e) {
+            {
+                std::lock_guard<std::mutex> lock(state_mutex_);
+                error_ = e.what();
+                assembler_.reset(assembler_.latest().generation);
             }
-
-            std::lock_guard<std::mutex> lock(pos_mtx);
-            switch (frame.can_id) {
-                case FRAME_PROPERTY::LEFT_JOINT_POSITION_1:
-                    joint_position[0] =
-                        bytesToInt16(joint_position[0], frame.data[0], frame.data[1]);
-                    joint_position[1] =
-                        bytesToInt16(joint_position[1], frame.data[2], frame.data[3]);
-                    joint_position[2] =
-                        bytesToInt16(joint_position[2], frame.data[4], frame.data[5]);
-                    joint_position[3] =
-                        bytesToInt16(joint_position[3], frame.data[6], frame.data[7]);
-                    break;
-                case FRAME_PROPERTY::LEFT_JOINT_POSITION_2:
-                    joint_position[4] =
-                        bytesToInt16(joint_position[4], frame.data[0], frame.data[1]);
-                    joint_position[5] =
-                        bytesToInt16(joint_position[5], frame.data[2], frame.data[3]);
-                    joint_position[6] =
-                        bytesToInt16(joint_position[6], frame.data[4], frame.data[5]);
-                    break;
-                case FRAME_PROPERTY::RIGHT_JOINT_POSITION_1:
-                    joint_position[7] =
-                        bytesToInt16(joint_position[7], frame.data[0], frame.data[1]);
-                    joint_position[8] =
-                        bytesToInt16(joint_position[8], frame.data[2], frame.data[3]);
-                    joint_position[9] =
-                        bytesToInt16(joint_position[9], frame.data[4], frame.data[5]);
-                    joint_position[10] =
-                        bytesToInt16(joint_position[10], frame.data[6], frame.data[7]);
-                    break;
-                case FRAME_PROPERTY::RIGHT_JOINT_POSITION_2:
-                    joint_position[11] =
-                        bytesToInt16(joint_position[11], frame.data[0], frame.data[1]);
-                    joint_position[12] =
-                        bytesToInt16(joint_position[12], frame.data[2], frame.data[3]);
-                    joint_position[13] =
-                        bytesToInt16(joint_position[13], frame.data[4], frame.data[5]);
-                    break;
-                case FRAME_PROPERTY::RESET_ZERO_COMMAND_1:
-
-                    break;
-                case FRAME_PROPERTY::RESET_ZERO_COMMAND_2:
-
-                    break;
-                case FRAME_PROPERTY::LINKER_HAND_VERSION:
-                    version = payload;
-                    break;
-                default:
-                    // if (RECV_DEBUG) std::cout << "Unknown data type: " << std::hex <<
-                    // (int)frame_property << std::endl;
-                    continue;
-            }
-        } catch (const std::runtime_error &e) {
-            std::cerr << "Error receiving data: " << e.what() << std::endl;
+            updated_.notify_all();
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
     }

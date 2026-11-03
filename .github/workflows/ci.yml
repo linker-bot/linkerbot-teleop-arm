@@ -7,12 +7,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-14]
         mode: [Debug, Release]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libgtest-dev libgmock-dev
       - run: cmake -S src/linkerta -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
       - run: cmake --build build --parallel 2
       - run: ctest --test-dir build --output-on-failure --no-tests=error --timeout 60
@@ -24,7 +23,6 @@ jobs:
         sanitizer: ['address,undefined', 'thread']
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libgtest-dev libgmock-dev
       - run: cmake -S src/linkerta -B build -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.sanitizer }}"
       - run: cmake --build build --parallel 2
       - run: ctest --test-dir build --output-on-failure --no-tests=error --timeout 90
@@ -40,3 +38,10 @@ jobs:
           colcon build --packages-select linkerta --cmake-args -DUSE_ROS2=ON -DBUILD_TESTING=ON
           colcon test --packages-select linkerta --return-code-on-test-failure
           colcon test-result --verbose
+
+  formatting:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - run: find src -type f \( -name '*.cpp' -o -name '*.h' \) -print0 | xargs -0 clang-format-18 --dry-run --Werror

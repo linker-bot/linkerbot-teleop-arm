@@ -8,15 +8,8 @@
 
 using namespace std::chrono_literals;
 
-std::atomic<bool> g_running{true};
-
-void signal_handler(int) {
-    g_running = false;
-}
-
 int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-    signal(SIGINT, signal_handler);
 
     auto node = std::make_shared<rclcpp::Node>("linkerta_node");
 
@@ -60,11 +53,13 @@ int main(int argc, char **argv) {
             // right_joint_states.velocity.push_back(velocity);
         }
 
-        rclcpp::Rate loop(100);
-        while (g_running && rclcpp::ok()) {
-            std::vector<float> position = arm.getJointPosition();
-            std::vector<bool> error_code = arm.getJointErrorCode();
-            arm.printJointInfo();
+        rclcpp::WallRate loop(100);
+        while (rclcpp::ok()) {
+            const auto snapshot = arm.readJointState();
+            const auto &position = snapshot.positions_degrees;
+            const auto &error_code = snapshot.faults;
+            // Legacy topics retain degrees until the explicit ROS2 units migration.
+            // Both publications are derived from the same complete snapshot.
             left_joint_states.position.clear();
             right_joint_states.position.clear();
             for (size_t i = 0; i < position.size(); ++i) {
@@ -83,10 +78,16 @@ int main(int argc, char **argv) {
 
             std::stringstream ss;
             for (size_t i = 0; i < error_code.size(); ++i) {
-                ss << "J" << i << ":" << error_code[i] << ", ";
+                ss << "J" << i << ":";
+                if (snapshot.fault_valid[i])
+                    ss << error_code[i];
+                else
+                    ss << "unknown";
+                ss << ", ";
             }
             msg.data = ss.str();
             pub_joint_error_code->publish(msg);
+            rclcpp::spin_some(node);
             loop.sleep();
         }
     } catch (const std::exception &e) {

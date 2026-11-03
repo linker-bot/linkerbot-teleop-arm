@@ -2,13 +2,17 @@
 cmake_minimum_required(VERSION 3.15)
 
 # 查找Google Test
+option(LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS "Download missing test dependencies" ON)
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
+    if(NOT LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS AND NOT FETCHCONTENT_SOURCE_DIR_GOOGLETEST)
+        message(FATAL_ERROR "GoogleTest is missing; install it or set FETCHCONTENT_SOURCE_DIR_GOOGLETEST (downloads disabled)")
+    endif()
     include(FetchContent)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG f8d7d77c06936315286eb55f8de22cd23c188571
+        GIT_TAG f8d7d77c06936315286eb55f8de22cd23c188571 # v1.14.0
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
@@ -21,21 +25,8 @@ include_directories(
 )
 
 # 测试源文件
-set(TEST_SOURCES
-    test_canbus.cpp
-    test_linkerarm.cpp
-    mock_canbus.cpp
-    test_main.cpp
-    test_canbus_io.cpp
-    test_node_config.cpp
-)
-
-# 创建测试可执行文件
-add_executable(run_tests
-    ${TEST_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/CanBus.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/LinkerArm.cpp
-)
+set(TEST_SOURCES test_protocol.cpp test_runtime.cpp test_node_config.cpp test_canbus_io.cpp)
+add_executable(run_tests ${TEST_SOURCES})
 
 # 查找Threads库
 find_package(Threads REQUIRED)
@@ -43,9 +34,8 @@ find_package(Threads REQUIRED)
 # 链接库
 target_link_libraries(run_tests
     PRIVATE
-    GTest::gtest
+    linkerta_core
     GTest::gtest_main
-    GTest::gmock
     Threads::Threads
 )
 
@@ -74,6 +64,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clan
         message(STATUS "Code coverage tools found")
         
         # 添加覆盖率编译选项
+        target_compile_options(linkerta_core PRIVATE --coverage -fprofile-arcs -ftest-coverage)
+        target_link_options(linkerta_core PUBLIC --coverage)
         target_compile_options(run_tests PRIVATE
             --coverage
             -fprofile-arcs
@@ -86,13 +78,14 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clan
         
         # 添加覆盖率目标
         add_custom_target(coverage
-            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+            COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --no-tests=error
             COMMAND ${LCOV_PATH} --capture --directory ${CMAKE_BINARY_DIR} --output-file ${CMAKE_BINARY_DIR}/coverage.info
-            COMMAND ${LCOV_PATH} --remove ${CMAKE_BINARY_DIR}/coverage.info '/usr/*' '*/test/*' '*/googletest/*' --output-file ${CMAKE_BINARY_DIR}/coverage.info
+            COMMAND ${LCOV_PATH} --remove ${CMAKE_BINARY_DIR}/coverage.info "/usr/*" "*/test/*" "*/googletest/*" --output-file ${CMAKE_BINARY_DIR}/coverage.info
             COMMAND ${GENHTML_PATH} ${CMAKE_BINARY_DIR}/coverage.info --output-directory ${CMAKE_BINARY_DIR}/coverage_html
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "Generating code coverage report"
             DEPENDS run_tests
+            VERBATIM
         )
     endif()
 endif()

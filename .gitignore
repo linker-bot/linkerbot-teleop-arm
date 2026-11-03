@@ -45,3 +45,10 @@ __pycache__/
 *.gcov
 *.gcda
 *.gcno
+
+# Out-of-tree validation builds and coverage
+build-*/
+coverage.info
+coverage_html/
+*.gcda
+*.gcno

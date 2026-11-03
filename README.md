@@ -1,5 +1,8 @@
 # Linkerhand-Tele-Arm
 
+> 当前开发接口：`getJointPosition()` 现在等待一组完整响应并可能抛出超时；读取缓存请使用 `latestSnapshot()` 并检查 `valid` / `isFresh()`。核心位置仍以度表示，现有 ROS2 话题保留旧单位，标准单位迁移另行进行。启动标定已禁用，设备接口须在进程外配置；发送归零命令不代表设备已确认执行。详见 [协议与快照契约](docs/PROTOCOL.md)、[测试门禁](docs/TESTING.md) 和 [安全边界](docs/SAFETY.md)。
+
+
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Platform](https://img.shields.io/badge/Platform-Linux-blue.svg)](https://www.linux.org/)
 [![Architecture](https://img.shields.io/badge/Arch-x86__64%20%7C%20aarch64-lightgrey.svg)]()
