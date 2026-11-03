@@ -130,7 +130,7 @@ void LinkerArm::receiveResponse() {
                 frame.can_dlc != 8)
                 continue;
             if ((frame.can_id == LEFT_JOINT_POSITION_2 || frame.can_id == RIGHT_JOINT_POSITION_2) &&
-                frame.can_dlc != 6 && frame.can_dlc != 7)
+                frame.can_dlc != 6 && frame.can_dlc != 7 && frame.can_dlc != 8)
                 continue;
 
             std::vector<uint8_t> data(frame.data, frame.data + frame.can_dlc);
