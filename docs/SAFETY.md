@@ -1,5 +1,7 @@
 # Runtime and calibration behavior
 
+[简体中文](zh/SAFETY.md)
+
 ## Interface configuration
 
 Configure bitrate and bring the CAN interface up before starting the process.

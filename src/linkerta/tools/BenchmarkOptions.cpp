@@ -6,11 +6,14 @@
 
 namespace LinkerArm::Benchmark {
 namespace {
-std::uint64_t number(const std::string &text, const std::string &key) {
+struct OptionName {
+    const std::string &text;
+};
+std::uint64_t number(const std::string &text, OptionName key) {
     std::uint64_t result = 0;
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), result);
     if (text.empty() || parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
-        throw std::invalid_argument(key + " requires an unsigned decimal integer");
+        throw std::invalid_argument(key.text + " requires an unsigned decimal integer");
     return result;
 }
 bool blank(const std::string &text) {
@@ -44,14 +47,14 @@ Options parseOptions(const std::vector<std::string> &args) {
         else if (key == "--firmware")
             options.firmware = value;
         else if (key == "--count")
-            options.count = number(value, key);
+            options.count = number(value, OptionName{key});
         else if (key == "--timeout-ms") {
-            const auto n = number(value, key);
+            const auto n = number(value, OptionName{key});
             if (n < 1 || n > 10000)
                 throw std::invalid_argument("timeout-ms must be 1..10000");
             options.timeout = std::chrono::milliseconds(n);
         } else if (key == "--drop-every")
-            options.drop_every = number(value, key);
+            options.drop_every = number(value, OptionName{key});
         else if (key == "--rate-hz") {
             std::size_t parsed = 0;
             try {

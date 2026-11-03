@@ -58,7 +58,10 @@ TEST_F(SocketCanIo, EmptyFrameIsInitializedAndLengthBounded) {
     // The imported decoder bounds native classic DLC to eight payload bytes.
     // Protocol invalid-length checks remain independently covered.
     const auto received = bus->read();
-    ASSERT_TRUE(received);
+    if (!received) {
+        ADD_FAILURE() << "Expected received frame";
+        return;
+    }
     EXPECT_EQ(received->dlc, 8);
     EXPECT_EQ(received->data[7], 0x5a);
     for (std::size_t i = 8; i < received->data.size(); ++i)
@@ -77,7 +80,10 @@ TEST_F(SocketCanIo, FiltersRemoteErrorAndPreservesExtendedIdentity) {
     wire.can_dlc = 8;
     ASSERT_EQ(write(peer, &wire, sizeof(wire)), sizeof(wire));
     const auto message = bus->read();
-    ASSERT_TRUE(message);
+    if (!message) {
+        ADD_FAILURE() << "Expected received frame";
+        return;
+    }
     EXPECT_TRUE(message->is_extended);
     EXPECT_EQ(message->id, 0x65);
 }

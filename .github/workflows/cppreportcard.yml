@@ -1,0 +1,82 @@
+name: C++ Report Card
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cppreportcard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Full report (ROS2, CLI, benchmark and tests)
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install build and analysis tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build clang-18 clang-format-18 clang-tidy-18 cppcheck \
+            libgtest-dev libgmock-dev python3-pytest \
+            ros-jazzy-sensor-msgs ros-jazzy-diagnostic-msgs ros-jazzy-std-srvs \
+            ros-jazzy-launch-testing-ament-cmake
+      - name: Configure every project translation unit
+        id: analysis_inputs
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cmake -S src/linkerta -B build/report -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DUSE_ROS2=ON \
+            -DBUILD_TESTING=ON -DLINKERTA_BUILD_BENCHMARKS=ON \
+            -DLINKERTA_TEST_VCAN_INTERFACE=vcan-report
+          cmake --build build/report --parallel 4
+          cmake --install build/report --prefix "$PWD/build/report-install"
+          cmake -S src/linkerta/test/consumer -B build/report-consumer -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_PREFIX_PATH="$PWD/build/report-install"
+          cmake --build build/report-consumer --parallel 4
+          python3 validation/prepare-report-db.py \
+            --output build/report-compile-commands.json \
+            build/report/compile_commands.json build/report-consumer/compile_commands.json
+      - name: Verify analysis coverage and GoogleTest diagnostics
+        run: |
+          python3 validation/test-report-db.py
+          python3 validation/test-quality-report.py
+          python3 validation/test-cppcheck-model.py --compile-commands build/report-compile-commands.json
+      - name: Generate quality report
+        if: ${{ !cancelled() && steps.analysis_inputs.outcome == 'success' }}
+        uses: soulteary/cppreportcard-action@9458d052f286c576d557c34d8ad43096cedbf561 # v1.0.2
+        with:
+          mode: full
+          config: .cppreportcard.json
+          compile_commands: build/report-compile-commands.json
+          output_dir: .github/cppreportcard
+          install_tools: 'false'
+          fail_on: findings
+          threshold: '0'
+          commit: 'false'
+      - name: Require a complete finding-free A+ report
+        run: python3 validation/check-quality-report.py .github/cppreportcard/report.json
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cppreportcard-complete
+          path: |
+            .github/cppreportcard/report.json
+            .github/cppreportcard/report.md
+            .github/cppreportcard/badge.svg
+            build/report-compile-commands.json
+            build/report-cppcheck/
+          include-hidden-files: true
+          if-no-files-found: warn

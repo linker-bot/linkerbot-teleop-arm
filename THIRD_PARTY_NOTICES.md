@@ -1,5 +1,7 @@
 # Third-party notices
 
+English · [简体中文](THIRD_PARTY_NOTICES.zh-CN.md)
+
 Linkerhand Tele Arm is licensed under [Apache-2.0](LICENSE). Dependencies retain
 their own licenses and copyright notices.
 

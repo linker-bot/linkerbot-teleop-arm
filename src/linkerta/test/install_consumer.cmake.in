@@ -13,7 +13,7 @@ endfunction()
 run_checked("@CMAKE_COMMAND@" --install "${build_dir}" --prefix "${prefix}" --config "${CONFIG}")
 file(RENAME "${prefix}" "${relocated}")
 # Check that the installed license texts are the exact source copies.
-foreach(notice IN ITEMS LICENSE THIRD_PARTY_NOTICES.md
+foreach(notice IN ITEMS LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.zh-CN.md
     LICENSES/linkerbot-transport-cpp.MIT.txt
     LICENSES/linkerbot-transport-cpp.NOTICE.txt
     LICENSES/GoogleTest.BSD-3-Clause.txt)

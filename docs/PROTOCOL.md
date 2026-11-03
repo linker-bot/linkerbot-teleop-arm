@@ -1,5 +1,7 @@
 # Tele-arm protocol and snapshot contract
 
+[简体中文](zh/PROTOCOL.md)
+
 The driver accepts the frames and assembles snapshots as described below.
 Before a hardware release, confirm the version format, firmware variants,
 calibration acknowledgement and maximum polling rate with device captures.

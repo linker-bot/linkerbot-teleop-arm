@@ -8,11 +8,14 @@
 
 namespace LinkerArm {
 namespace {
-std::uint64_t unsignedNumber(const std::string &text, const std::string &name) {
+struct OptionName {
+    const std::string &text;
+};
+std::uint64_t unsignedNumber(const std::string &text, OptionName name) {
     std::uint64_t result = 0;
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), result);
     if (text.empty() || parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size())
-        throw std::invalid_argument(name + " must be an unsigned decimal integer");
+        throw std::invalid_argument(name.text + " must be an unsigned decimal integer");
     return result;
 }
 
@@ -74,7 +77,7 @@ CliOptions parseCliOptions(const std::vector<std::string> &args) {
                 !std::isfinite(options.rate_hz) || options.rate_hz < 0.1 || options.rate_hz > 200.0)
                 throw std::invalid_argument("rate-hz must be finite and between 0.1 and 200");
         } else {
-            const auto number = unsignedNumber(value, key);
+            const auto number = unsignedNumber(value, OptionName{key});
             if (key == "--bitrate") {
                 if (number == 0 || number > 10000000)
                     throw std::invalid_argument("bitrate must be between 1 and 10000000");

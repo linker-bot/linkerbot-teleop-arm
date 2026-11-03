@@ -1,5 +1,7 @@
 # Tests
 
+[简体中文](zh/TESTING.md)
+
 Run `./test.sh` from the repository root. To use your own build directory,
 configure with `cmake -S src/linkerta -B build -DBUILD_TESTING=ON`, build, then run
 `ctest --test-dir build --output-on-failure --no-tests=error`.

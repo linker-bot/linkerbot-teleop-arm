@@ -1,5 +1,7 @@
 # Session transport integration
 
+[简体中文](zh/SESSION.md)
+
 `linkerbot::transport::Session` routes received frames and schedules transmission.
 The codec and snapshot assembler live in `linkerta::core`. The SocketCAN factory
 opens classic CAN; this protocol does not accept CAN FD frames.

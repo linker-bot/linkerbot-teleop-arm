@@ -1,29 +1,31 @@
-# 升级、回滚与问题报告
+[English](OPERATIONS.md) | [简体中文](zh/OPERATIONS.md)
 
-[文档索引](README.md) · [故障排查](TROUBLESHOOTING.md) · [验证边界](VALIDATION.md)
+# Upgrades, rollback, and issue reports
 
-## 固定版本与安装来源
+[Documentation](README.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Validation](VALIDATION.md)
 
-升级前记录应用提交、CMake 配置、编译器、ROS 发行版，以及 transport 的安装来源。源码 fallback 在 CMake 中固定 transport 提交；`find_package(linkerbot-comm 0.3)` 使用环境中已安装的包，它只检查版本下限，不保证所找到的包与 fallback 固定提交相同。升级前核对实际找到的包，并运行安装消费和集成测试。
+## Record versions and installation sources
 
-把新构建安装到独立 prefix，避免把不同版本库和头文件混合覆盖。停止旧节点、切换安装环境，再启动一个实例验证版本、诊断和新鲜快照。回滚时使用完整的上一安装 prefix 和对应配置，不仅替换单个二进制。程序不会自动修改网卡 bitrate，也不会在重启后自动标定。
+Before upgrading, record the application commit, CMake configuration, compiler, ROS distribution, and transport installation source. The source fallback pins a transport commit in CMake. `find_package(linkerbot-comm 0.3)` instead uses an installed package and checks only a minimum version; that package need not match the fallback commit. Confirm the package actually found and run installed-consumer and integration tests.
 
-ROS2 参数为启动时只读配置。确认所加载的是安装目录还是外部 `--params-file`，保存配置副本并与新版本一起测试。旧左右话题是度，标准 `/joint_states` 是弧度；迁移消费者时明确单位，不能只改话题名称。
+Install the new build into a separate prefix to avoid mixing library and header versions. Stop the old node, switch installation environments, then start one instance and check its version, diagnostics, and fresh snapshots. Roll back using the entire previous prefix and matching configuration, not a single binary. The program does not configure interface bitrate or calibrate automatically after restarting.
 
-## 断线与退出
+ROS2 parameters are read-only startup configuration. Identify whether they come from the installation or an external `--params-file`; save a copy and test it with the new version. Legacy arm topics use degrees, while `/joint_states` uses radians. When migrating consumers, account for units as well as topic names.
 
-请求超时后，设备仍可能已经执行了命令。停止新的业务操作后，由 Session 所有者决定关闭或显式恢复；不要在失败循环里自动重复标定。共享 Session 恢复后重建旧 arm。关闭时先停止调用方，再销毁 arm，最后关闭由应用拥有的 Session。
+## Disconnection and shutdown
 
-默认 launch 会重启退出的进程，但不会替应用处理连接恢复。如果进程反复退出，应先检查启动错误、参数和接口状态。
+A device may already have executed a command when the request times out. Stop new operations, then let the Session owner decide whether to close or explicitly recover it. Do not retry calibration in a failure loop. Reconstruct old arms after recovering a shared Session. During shutdown, stop callers first, destroy the arm, then close the Session owned by the application.
 
-## 复现材料
+The default launch file restarts exited processes but does not manage connection recovery for the application. If a process repeatedly exits, inspect its startup error, parameters, and interface state.
 
-提交问题时提供：
+## Information for reproduction
 
-- 应用与依赖提交、构建命令、平台/架构、编译器和 ROS2 版本。
-- 设备、固件、适配器、接口、bitrate，以及是否共享 Session。
-- 最小复现步骤、预期与实际行为、退出码和原始错误文本。
-- 相关时间窗口的 `/diagnostics`、Session/route 状态、配置及原始 CAN 抓帧。
-- 性能问题附 CSV 与 metadata，说明是 synthetic、vcan 还是真实设备数据。
+Include the following in an issue report:
 
-如果只在某台设备出现，不要把模拟结果当作排除了硬件因素；同时保留可在 FakeTransport 重现的最小用例。测试失败时，请附上具体断言和完整失败日志，方便区分代码问题与环境问题。
+- Application and dependency commits, build command, platform/architecture, compiler, and ROS2 version.
+- Device, firmware, adapter, interface, bitrate, and whether the Session is shared.
+- Minimal reproduction steps, expected and actual behavior, exit code, and original error text.
+- `/diagnostics`, Session/route state, configuration, and raw CAN captures for the relevant time window.
+- For performance issues, CSV and metadata identifying synthetic, vcan, or physical-device data.
+
+A simulation result does not rule out a hardware cause for an issue seen on one device. Preserve a minimal FakeTransport reproduction when possible. For failing tests, include the exact assertion and full failure log so code and environment failures can be distinguished.

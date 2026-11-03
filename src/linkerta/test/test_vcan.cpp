@@ -1,6 +1,7 @@
 #include "LinkerArm.h"
 #include "SessionFactory.h"
 #include <atomic>
+#include <cstddef>
 #include <gtest/gtest.h>
 #include <linkerbot/can/socketcan_transport.hpp>
 #include <thread>
@@ -36,7 +37,7 @@ private:
                     linkerbot::can::Message reply;
                     reply.id = 0x65 + block;
                     reply.dlc = block % 2 ? 7 : 8;
-                    for (unsigned joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
+                    for (std::size_t joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
                         reply.data[2 * joint] = 0x03;
                         reply.data[2 * joint + 1] = 0x84;
                     }

@@ -175,7 +175,8 @@ void TeleArmNode::publishSnapshot(const Protocol::ArmSnapshot &snapshot) {
     right.header.stamp = stamp;
     for (std::size_t i = 0; i < Protocol::kJointCount; ++i) {
         const auto name = "joint" + std::to_string(i < 7 ? 61 + i : 51 + i - 7);
-        const double degrees = snapshot.positions_degrees[i] * config_.negation[i];
+        const double degrees = static_cast<double>(snapshot.positions_degrees[i]) *
+                               static_cast<double>(config_.negation[i]);
         standard.name.push_back(name);
         standard.position.push_back(degrees * kRadiansPerDegree);
         auto &legacy = i < 7 ? left : right;
