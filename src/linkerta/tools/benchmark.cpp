@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <linkerbot/can/fake_transport.hpp>
 #include <memory>
 #include <sstream>
@@ -65,6 +66,7 @@ void writeMetadata(const B::Options &options, const std::string &started,
                    const std::vector<std::uint64_t> &durations, bool complete) {
     std::ofstream out(options.output + ".metadata.json");
     out.exceptions(std::ios::badbit | std::ios::failbit);
+    out << std::setprecision(std::numeric_limits<double>::max_digits10);
     out << "{\n  \"schema_version\": 1,\n  \"synthetic\": " << std::boolalpha << options.simulate
         << ",\n  \"complete\": " << complete << ",\n  \"started_utc\": " << json(started)
         << ",\n  \"driver_revision\": " << json(LINKERTA_BUILD_REVISION)
@@ -200,7 +202,8 @@ int run(const B::Options &options) {
     }
     writeMetadata(options, started_utc, version, performed, successful_durations,
                   performed == options.count);
-    std::cout << (options.simulate ? "SYNTHETIC" : "HARDWARE") << " requests=" << performed
+    std::cout << std::setprecision(std::numeric_limits<double>::max_digits10)
+              << (options.simulate ? "SYNTHETIC" : "HARDWARE") << " requests=" << performed
               << " successes=" << successful_durations.size()
               << " failures=" << performed - successful_durations.size() << " success_ratio="
               << (performed ? static_cast<double>(successful_durations.size()) / performed : 0.0)
