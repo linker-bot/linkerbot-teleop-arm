@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(linkerta
-    VERSION 0.0.1
+    VERSION 2.0.0
     LANGUAGES CXX
     DESCRIPTION "Linker Tele-Arm driver for robotic arm control"
 )
