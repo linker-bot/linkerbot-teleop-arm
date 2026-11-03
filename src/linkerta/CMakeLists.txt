@@ -34,7 +34,7 @@ endif()
 # 构建选项
 #-----------------------------------------------------------------------------
 option(USE_ROS2 "Build with ROS2 support" OFF)
-option(BUILD_TESTING "Build the testing tree" OFF)
+option(BUILD_TESTING "Build the testing tree" ON)
 
 message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "Version: ${PROJECT_VERSION}")

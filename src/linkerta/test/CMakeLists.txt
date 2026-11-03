@@ -8,7 +8,7 @@ if(NOT GTest_FOUND)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG v1.14.0
+        GIT_TAG f8d7d77c06936315286eb55f8de22cd23c188571
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
@@ -61,7 +61,7 @@ set_target_properties(run_tests PROPERTIES
 
 # 添加测试
 include(GoogleTest)
-gtest_discover_tests(run_tests)
+gtest_discover_tests(run_tests DISCOVERY_MODE PRE_TEST)
 
 # 代码覆盖率支持（如果可用）
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
