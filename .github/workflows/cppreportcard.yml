@@ -77,5 +77,6 @@ jobs:
             .github/cppreportcard/report.md
             .github/cppreportcard/badge.svg
             build/report-compile-commands.json
+            build/report-cppcheck/
           include-hidden-files: true
           if-no-files-found: warn

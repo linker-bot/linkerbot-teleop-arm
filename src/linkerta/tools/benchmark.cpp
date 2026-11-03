@@ -79,7 +79,8 @@ void writeMetadata(const B::Options &options, const std::string &started,
         << ",\n  \"performed_count\": " << performed
         << ",\n  \"successful_count\": " << durations.size()
         << ",\n  \"failed_count\": " << performed - durations.size() << ",\n  \"success_ratio\": "
-        << (performed ? static_cast<double>(durations.size()) / performed : 0.0)
+        << (performed ? static_cast<double>(durations.size()) / static_cast<double>(performed)
+                      : 0.0)
         << ",\n  \"rate_hz\": " << options.rate_hz
         << ",\n  \"timeout_ms\": " << options.timeout.count()
         << ",\n  \"transmit_gap_us\": 5000,\n  \"simulation_drop_every\": " << options.drop_every
@@ -110,11 +111,11 @@ std::shared_ptr<LinkerArm::LinkerArm> makeArm(const B::Options &options) {
         std::vector<linkerbot::can::Message> replies;
         if (drop && count % drop == 0)
             return replies;
-        for (unsigned block = 0; block < 4; ++block) {
+        for (std::size_t block = 0; block < 4; ++block) {
             linkerbot::can::Message frame;
             frame.id = 0x65 + block;
             frame.dlc = block % 2 ? 7 : 8;
-            for (unsigned joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
+            for (std::size_t joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
                 frame.data[2 * joint] = 0x03;
                 frame.data[2 * joint + 1] = 0x84;
             }
@@ -206,7 +207,9 @@ int run(const B::Options &options) {
               << (options.simulate ? "SYNTHETIC" : "HARDWARE") << " requests=" << performed
               << " successes=" << successful_durations.size()
               << " failures=" << performed - successful_durations.size() << " success_ratio="
-              << (performed ? static_cast<double>(successful_durations.size()) / performed : 0.0)
+              << (performed ? static_cast<double>(successful_durations.size()) /
+                                  static_cast<double>(performed)
+                            : 0.0)
               << " p50_us=";
     metric(std::cout, B::percentile(successful_durations, 0.50));
     std::cout << " p95_us=";

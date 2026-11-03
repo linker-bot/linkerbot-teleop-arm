@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <functional>
@@ -43,7 +44,7 @@ struct RosArmRig {
                 frame.id = 0x65 + block;
                 frame.dlc = block % 2 ? 7 : 8;
                 // Every joint is +90 degrees in the wire format.
-                for (unsigned joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
+                for (std::size_t joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
                     frame.data[joint * 2] = 0x03;
                     frame.data[joint * 2 + 1] = 0x84;
                 }

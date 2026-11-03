@@ -1,6 +1,7 @@
 """Fail if Cppcheck's GoogleTest model loses test bodies or assertion operands."""
 import argparse
 import json
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -27,7 +28,7 @@ def main():
         "stream_operand": ('TEST(Probe, Stream) { int *p = nullptr; EXPECT_TRUE(false) << *p; }', "nullPointer"),
         "exception_operand": ('TEST(Probe, Exception) { int *p = nullptr; EXPECT_THROW((void)*p, int); }', "nullPointer"),
         "array_operand": ('TEST(Probe, Array) { int n[1] = {0}; EXPECT_EQ(n[2], 0); }', "arrayIndexOutOfBounds"),
-        "fixture_body": ('class Fixture : public testing::Test { protected: int *member = nullptr; };\nTEST_F(Fixture, Member) { int n = *member; (void)n; }', "nullPointer"),
+        "fixture_body": ('class Fixture : public testing::Test { protected: int *member = nullptr; };\nTEST_F(Fixture, Member) { member = nullptr; int n = *member; (void)n; }', "nullPointer"),
         "later_body": ('TEST(Probe, First) { EXPECT_TRUE(true); }\nTEST(Probe, Second) { int *p = nullptr; int n = *p; (void)n; }', "nullPointer"),
     }
     wrapper = Path(__file__).with_name("cppcheck-report.sh").resolve()
@@ -57,6 +58,17 @@ def main():
                 raise AssertionError(f"{name}: expected {expected}, got {ids}")
             if expected is None and ids & {"nullPointer", "arrayIndexOutOfBounds"}:
                 raise AssertionError(f"{name}: fatal assertion control flow was lost: {ids}")
+            if name == "fixture_body":
+                # Keep the inherited member scope. Initializer propagation
+                # across a base-class boundary is outside this local probe;
+                # explicitly assigning the member tests the body diagnostics.
+                preprocessed = subprocess.run(
+                    [str(wrapper), f"--project={manifest}", "-E"],
+                    capture_output=True, text=True, check=True,
+                ).stdout
+                if not re.search(r"class\s+Fixture_Member_Test", preprocessed) or not re.search(
+                        r"Fixture_Member_Test\s*::\s*TestBody", preprocessed):
+                    raise AssertionError("TEST_F lost its derived-fixture member scope")
             print(f"PASS {name}")
 
 

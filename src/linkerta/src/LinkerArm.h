@@ -34,7 +34,7 @@ struct SessionOptions {
 
 class LinkerArm {
 public:
-    explicit LinkerArm(std::string device);
+    explicit LinkerArm(const std::string &device);
     LinkerArm(const std::string &interface_name, int bitrate);
     explicit LinkerArm(std::shared_ptr<linkerbot::transport::Session> session);
     LinkerArm(std::shared_ptr<linkerbot::transport::Session> session, SessionOptions options);

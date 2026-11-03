@@ -14,8 +14,10 @@ the documented hardware or ROS deployment support.
 Analysis covers this project's core, CLI, ROS2 adapter, measurement tool and tests.
 Downloaded dependencies and generated build files are not this project's analysis
 scope. Compiler include paths remain available when analyzing project sources.
-A test-framework model, if used, must have regression checks showing that it does
-not hide real defects.
+Cppcheck uses its GoogleTest model plus a small `TEST_F` definition that preserves
+derived-fixture member scope. Ten negative controls check test bodies, assertion
+operands and fatal-assertion flow. The wrapper keeps raw XML in the artifact so
+configuration errors in dependency headers remain available for diagnosis.
 
 The gate requires a complete full-mode report and zero findings from all configured
 tools. Tool failures, incomplete analysis and diagnostics fail the job. Do not lower

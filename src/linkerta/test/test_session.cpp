@@ -11,11 +11,15 @@ namespace {
 using linkerbot::can::FakeTransport;
 using linkerbot::can::Message;
 using linkerbot::transport::Session;
-Message frame(uint32_t id, uint8_t value = 0) {
+struct FrameSample {
+    std::uint32_t id;
+    std::uint8_t value = 0;
+};
+Message frame(FrameSample sample) {
     Message message;
-    message.id = id;
+    message.id = sample.id;
     message.dlc = 1;
-    message.data[0] = value;
+    message.data[0] = sample.value;
     return message;
 }
 struct SessionRig {
@@ -47,17 +51,26 @@ TEST(SessionIntegration, ExactRoutesKeepOtherDevicesAndExtendedFramesSeparate) {
         {{0x64, false}, {0x65, false}, {0x66, false}, {0x67, false}, {0x68, false}}, 8);
     auto other = rig.session->subscribe_routes({{0x300, false}}, 4);
     auto extended = rig.session->subscribe_routes({{0x65, true}}, 4);
-    auto ext = frame(0x65, 8);
+    auto ext = frame({0x65, 8});
     ext.is_extended = true;
     rig.fake->inject(ext);
-    rig.fake->inject(frame(0x300, 9));
-    rig.fake->inject(frame(0x65, 10));
+    rig.fake->inject(frame({0x300, 9}));
+    rig.fake->inject(frame({0x65, 10}));
     const auto a = arm->receive_until(linkerbot::transport::Clock::now() + 1s);
     const auto o = other->receive_until(linkerbot::transport::Clock::now() + 1s);
     const auto e = extended->receive_until(linkerbot::transport::Clock::now() + 1s);
-    ASSERT_TRUE(a);
-    ASSERT_TRUE(o);
-    ASSERT_TRUE(e);
+    if (!a) {
+        ADD_FAILURE() << "Expected routed frame a";
+        return;
+    }
+    if (!o) {
+        ADD_FAILURE() << "Expected routed frame o";
+        return;
+    }
+    if (!e) {
+        ADD_FAILURE() << "Expected routed frame e";
+        return;
+    }
     EXPECT_EQ(a->message.data[0], 10);
     EXPECT_EQ(o->message.data[0], 9);
     EXPECT_EQ(e->message.data[0], 8);
@@ -68,15 +81,18 @@ TEST(SessionIntegration, BoundedInboxReportsOverflowInsteadOfReplacingOldFrames)
     SessionRig rig;
     auto arm = rig.session->subscribe_routes({{0x65, false}, {0x66, false}}, 1);
     auto barrier = rig.session->subscribe_routes({{0x300, false}}, 1);
-    rig.fake->inject(frame(0x65, 1));
-    rig.fake->inject(frame(0x66, 2));
-    rig.fake->inject(frame(0x65, 3));
-    rig.fake->inject(frame(0x300));
+    rig.fake->inject(frame({0x65, 1}));
+    rig.fake->inject(frame({0x66, 2}));
+    rig.fake->inject(frame({0x65, 3}));
+    rig.fake->inject(frame({0x300}));
     ASSERT_TRUE(barrier->receive_until(linkerbot::transport::Clock::now() + 1s));
     EXPECT_EQ(arm->health().overflow, 2);
     EXPECT_EQ(rig.session->health().overflows, 2);
     const auto first = arm->try_receive();
-    ASSERT_TRUE(first);
+    if (!first) {
+        ADD_FAILURE() << "Expected routed frame first";
+        return;
+    }
     EXPECT_EQ(first->message.data[0], 1);
     EXPECT_FALSE(arm->try_receive());
 }
@@ -85,14 +101,14 @@ TEST(SessionIntegration, FullQueueAndCancellationDoNotReplayCommands) {
     SessionRig rig(1);
     rig.fake->arm_tx_gate();
     ReleaseGate release{rig.fake};
-    auto active = rig.session->submit({{frame(0x300, 1)}});
+    auto active = rig.session->submit({{frame({0x300, 1})}});
     ASSERT_TRUE(rig.fake->wait_until_tx_entered(1s));
     linkerbot::transport::CancellationSource cancellation;
     linkerbot::transport::SendOptions options;
     options.endpoint = "arm";
     options.cancellation = cancellation.token();
-    auto queued = rig.session->submit({{frame(0xc1)}}, options);
-    EXPECT_THROW(rig.session->submit({{frame(0x04)}}), linkerbot::can::QueueFullError);
+    auto queued = rig.session->submit({{frame({0xc1})}}, options);
+    EXPECT_THROW(rig.session->submit({{frame({0x04})}}), linkerbot::can::QueueFullError);
     cancellation.cancel();
     rig.fake->release_tx_gate();
     active.wait();
@@ -161,7 +177,7 @@ TEST(SessionIntegration, FailureReceiptWaitsForExceptionDiagnostics) {
             gate->release();
         }
     } release{gate};
-    auto receipt = session->submit({{frame(0x300)}});
+    auto receipt = session->submit({{frame({0x300})}});
     {
         std::unique_lock<std::mutex> lock(gate->mutex);
         ASSERT_TRUE(gate->cv.wait_for(lock, 1s, [&] { return gate->entered; }));

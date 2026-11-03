@@ -1,6 +1,9 @@
 // Test-only transport fixture. Production nodes never expose fake transport controls.
 #include "TeleArmNode.h"
 #include <atomic>
+#include <cstddef>
+#include <cstdio>
+#include <exception>
 #include <linkerbot/can/fake_transport.hpp>
 #include <linkerbot/transport/session.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -8,8 +11,8 @@
 #include <std_srvs/srv/set_bool.hpp>
 
 using namespace std::chrono_literals;
-int main(int argc, char **argv) {
-    rclcpp::init(argc, argv);
+namespace {
+int runFixture() {
     std::atomic<bool> respond{true};
     std::atomic<unsigned> calibrations{0};
     auto fake = std::make_unique<linkerbot::can::FakeTransport>();
@@ -21,7 +24,7 @@ int main(int argc, char **argv) {
             linkerbot::can::Message frame;
             frame.id = 0x65 + block;
             frame.dlc = block % 2 ? 7 : 8;
-            for (unsigned joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
+            for (std::size_t joint = 0; joint < (block % 2 ? 3u : 4u); ++joint) {
                 frame.data[joint * 2] = 0x03;
                 frame.data[joint * 2 + 1] = 0x84;
             }
@@ -61,6 +64,32 @@ int main(int argc, char **argv) {
     driver.reset();
     arm.reset();
     session->close();
-    rclcpp::shutdown();
     return 0;
+}
+} // namespace
+
+int main(int argc, char **argv) {
+    int result = 0;
+    try {
+        rclcpp::init(argc, argv);
+        result = runFixture();
+    } catch (const std::exception &error) {
+        std::fprintf(stderr, "ros2_test_fixture: %s\n", error.what());
+        result = 1;
+    } catch (...) {
+        std::fprintf(stderr, "ros2_test_fixture: unknown exception\n");
+        result = 1;
+    }
+    // runFixture's stack has released its executor, nodes and owned Session.
+    // Also shut down ROS after partial initialization or exceptional teardown.
+    try {
+        rclcpp::shutdown();
+    } catch (const std::exception &error) {
+        std::fprintf(stderr, "ros2_test_fixture shutdown: %s\n", error.what());
+        return 1;
+    } catch (...) {
+        std::fprintf(stderr, "ros2_test_fixture shutdown: unknown exception\n");
+        return 1;
+    }
+    return result;
 }

@@ -15,7 +15,16 @@ TimePoint at(int milliseconds) {
     return TimePoint{} + std::chrono::milliseconds(milliseconds);
 }
 
-Frame jointFrame(std::size_t block, std::int16_t tenths = 100, bool with_faults = true) {
+struct JointSample {
+    std::size_t block;
+    std::int16_t tenths = 100;
+    bool with_faults = true;
+};
+
+Frame jointFrame(JointSample sample) {
+    const auto block = sample.block;
+    const auto tenths = sample.tenths;
+    const auto with_faults = sample.with_faults;
     Frame frame;
     frame.can_id = static_cast<std::uint32_t>(0x65 + block);
     const bool four = block % 2 == 0;
@@ -31,14 +40,19 @@ Frame jointFrame(std::size_t block, std::int16_t tenths = 100, bool with_faults 
     return frame;
 }
 
-DecodedFrame joint(std::size_t block, std::int16_t tenths = 100, bool with_faults = true) {
-    return *decodeFrame(jointFrame(block, tenths, with_faults)).frame;
+DecodedFrame joint(JointSample sample) {
+    const auto decoded = decodeFrame(jointFrame(sample));
+    if (!decoded.frame) {
+        ADD_FAILURE() << "Test joint frame did not decode";
+        throw std::runtime_error("test joint frame did not decode");
+    }
+    return *decoded.frame;
 }
 
 void complete(SnapshotAssembler &assembler, int start = 0, bool with_faults = true) {
     for (std::size_t block = 0; block < kBlockCount; ++block) {
         EXPECT_EQ(
-            assembler.ingest(joint(block, 100, with_faults), at(start + static_cast<int>(block))),
+            assembler.ingest(joint({block, 100, with_faults}), at(start + static_cast<int>(block))),
             block == kBlockCount - 1);
     }
 }
@@ -57,7 +71,7 @@ TEST(ArmProtocol, DecodesSignedBigEndianAndWrappedAngles) {
 TEST(ArmProtocol, LengthContractForEveryJointId) {
     for (std::size_t block = 0; block < kBlockCount; ++block) {
         for (unsigned length = 0; length <= 9; ++length) {
-            auto frame = jointFrame(block);
+            auto frame = jointFrame({block});
             frame.dlc = static_cast<std::uint8_t>(length);
             const auto result = decodeFrame(frame);
             const bool valid =
@@ -69,22 +83,22 @@ TEST(ArmProtocol, LengthContractForEveryJointId) {
 }
 
 TEST(ArmProtocol, RejectsRemoteErrorExtendedAndFdFrames) {
-    auto frame = jointFrame(0);
+    auto frame = jointFrame({0});
     frame.is_remote = true;
     EXPECT_EQ(decodeFrame(frame).error, DecodeError::invalid_flags);
-    frame = jointFrame(0);
+    frame = jointFrame({0});
     frame.is_error = true;
     EXPECT_EQ(decodeFrame(frame).error, DecodeError::invalid_flags);
-    frame = jointFrame(0);
+    frame = jointFrame({0});
     frame.is_extended = true;
     EXPECT_EQ(decodeFrame(frame).error, DecodeError::invalid_flags);
-    frame = jointFrame(0);
+    frame = jointFrame({0});
     frame.is_fd = true;
     EXPECT_EQ(decodeFrame(frame).error, DecodeError::invalid_flags);
-    frame = jointFrame(0);
+    frame = jointFrame({0});
     frame.can_id |= 0x40000000U;
     EXPECT_EQ(decodeFrame(frame).error, DecodeError::invalid_flags);
-    frame = jointFrame(0);
+    frame = jointFrame({0});
     frame.can_id = 0x123;
     EXPECT_EQ(decodeFrame(frame).error, DecodeError::unknown_id);
 }
@@ -99,7 +113,10 @@ TEST(ArmProtocol, KeepsVersionBytesWithoutInventingAnEncoding) {
         if (length == 0 || length > 8) {
             EXPECT_EQ(decoded.error, DecodeError::invalid_length);
         } else {
-            ASSERT_TRUE(decoded.frame);
+            if (!decoded.frame) {
+                ADD_FAILURE() << "Expected version frame for length " << length;
+                return;
+            }
             EXPECT_EQ(decoded.frame->kind, FrameKind::version);
             EXPECT_EQ(decoded.frame->version_size, length);
             EXPECT_EQ(decoded.frame->version_bytes, frame.data);
@@ -108,13 +125,28 @@ TEST(ArmProtocol, KeepsVersionBytesWithoutInventingAnEncoding) {
 }
 
 TEST(ArmProtocol, DistinguishesMissingFaultByteFromHealthyFaultByte) {
-    auto frame = jointFrame(1, 100, false);
-    EXPECT_FALSE(decodeFrame(frame).frame->fault_bits);
+    auto frame = jointFrame({1, 100, false});
+    auto decoded = decodeFrame(frame);
+    if (!decoded.frame) {
+        ADD_FAILURE() << "Expected legacy joint reply to decode";
+        return;
+    }
+    EXPECT_FALSE(decoded.frame->fault_bits);
     frame.dlc = 7;
     frame.data[6] = 0;
-    EXPECT_EQ(decodeFrame(frame).frame->fault_bits, 0);
+    decoded = decodeFrame(frame);
+    if (!decoded.frame) {
+        ADD_FAILURE() << "Expected healthy joint reply to decode";
+        return;
+    }
+    EXPECT_EQ(decoded.frame->fault_bits, 0);
     frame.data[6] = 0x55;
-    EXPECT_EQ(decodeFrame(frame).frame->fault_bits, 0x55);
+    decoded = decodeFrame(frame);
+    if (!decoded.frame) {
+        ADD_FAILURE() << "Expected faulted joint reply to decode";
+        return;
+    }
+    EXPECT_EQ(decoded.frame->fault_bits, 0x55);
 }
 
 TEST(ArmSnapshot, RequiresAllFourBlocksAndCommitsAtomicallyInAnyOrder) {
@@ -122,9 +154,10 @@ TEST(ArmSnapshot, RequiresAllFourBlocksAndCommitsAtomicallyInAnyOrder) {
     EXPECT_FALSE(assembler.latest().valid);
     constexpr std::array<std::size_t, 4> order{3, 1, 0, 2};
     for (std::size_t i = 0; i < order.size(); ++i) {
-        EXPECT_EQ(assembler.ingest(joint(order[i], static_cast<std::int16_t>(100 + order[i] * 10)),
-                                   at(static_cast<int>(i))),
-                  i == 3);
+        EXPECT_EQ(
+            assembler.ingest(joint({order[i], static_cast<std::int16_t>(100 + order[i] * 10)}),
+                             at(static_cast<int>(i))),
+            i == 3);
         EXPECT_EQ(assembler.latest().valid, i == 3);
     }
     const auto snapshot = assembler.latest();
@@ -156,14 +189,14 @@ TEST(ArmSnapshot, MissingFaultsRemainUnknownAndDoNotReusePriorFaults) {
 
 TEST(ArmSnapshot, DuplicateDiscardsThePriorPartialCandidate) {
     SnapshotAssembler assembler;
-    EXPECT_FALSE(assembler.ingest(joint(0, 100), at(0)));
-    EXPECT_FALSE(assembler.ingest(joint(1, 100), at(1)));
-    EXPECT_FALSE(assembler.ingest(joint(0, 200), at(2)));
+    EXPECT_FALSE(assembler.ingest(joint({0, 100}), at(0)));
+    EXPECT_FALSE(assembler.ingest(joint({1, 100}), at(1)));
+    EXPECT_FALSE(assembler.ingest(joint({0, 200}), at(2)));
     EXPECT_EQ(assembler.pendingMask(), 1);
-    EXPECT_FALSE(assembler.ingest(joint(2, 200), at(3)));
-    EXPECT_FALSE(assembler.ingest(joint(3, 200), at(4)));
+    EXPECT_FALSE(assembler.ingest(joint({2, 200}), at(3)));
+    EXPECT_FALSE(assembler.ingest(joint({3, 200}), at(4)));
     EXPECT_FALSE(assembler.latest().valid);
-    EXPECT_TRUE(assembler.ingest(joint(1, 200), at(5)));
+    EXPECT_TRUE(assembler.ingest(joint({1, 200}), at(5)));
     for (const auto position : assembler.latest().positions_degrees) {
         EXPECT_FLOAT_EQ(position, 20.0f);
     }
@@ -172,14 +205,14 @@ TEST(ArmSnapshot, DuplicateDiscardsThePriorPartialCandidate) {
 TEST(ArmSnapshot, ExpiredPartialSetStartsOverWithoutTouchingCommittedSnapshot) {
     SnapshotAssembler assembler(10ms);
     complete(assembler);
-    EXPECT_FALSE(assembler.ingest(joint(0, 200), at(10)));
-    EXPECT_FALSE(assembler.ingest(joint(1, 200), at(21)));
+    EXPECT_FALSE(assembler.ingest(joint({0, 200}), at(10)));
+    EXPECT_FALSE(assembler.ingest(joint({1, 200}), at(21)));
     EXPECT_EQ(assembler.pendingMask(), 2);
     EXPECT_EQ(assembler.latest().sequence, 1);
     EXPECT_FLOAT_EQ(assembler.latest().positions_degrees[0], 10.0f);
-    EXPECT_FALSE(assembler.ingest(joint(2, 200), at(22)));
-    EXPECT_FALSE(assembler.ingest(joint(3, 200), at(23)));
-    EXPECT_TRUE(assembler.ingest(joint(0, 200), at(24)));
+    EXPECT_FALSE(assembler.ingest(joint({2, 200}), at(22)));
+    EXPECT_FALSE(assembler.ingest(joint({3, 200}), at(23)));
+    EXPECT_TRUE(assembler.ingest(joint({0, 200}), at(24)));
     EXPECT_EQ(assembler.latest().sequence, 2);
 }
 
@@ -196,11 +229,11 @@ TEST(ArmSnapshot, FreshnessIncludesTheOldestPartAndRejectsFutureTimestamps) {
 TEST(ArmSnapshot, ResetAndNewRequestDiscardOldPartialState) {
     SnapshotAssembler assembler;
     complete(assembler);
-    EXPECT_FALSE(assembler.ingest(joint(0), at(10)));
+    EXPECT_FALSE(assembler.ingest(joint({0}), at(10)));
     assembler.beginCycle(at(20));
     EXPECT_EQ(assembler.pendingMask(), 0);
     EXPECT_TRUE(assembler.latest().valid);
-    EXPECT_FALSE(assembler.ingest(joint(0), at(19)));
+    EXPECT_FALSE(assembler.ingest(joint({0}), at(19)));
     EXPECT_EQ(assembler.pendingMask(), 0);
     complete(assembler, 20);
     assembler.reset(42);
@@ -214,18 +247,18 @@ TEST(ArmSnapshot, ResetAndNewRequestDiscardOldPartialState) {
 
 TEST(ArmSnapshot, InvalidDecodedFramesAndBackwardsTimeHaveNoEffect) {
     SnapshotAssembler assembler;
-    EXPECT_FALSE(assembler.ingest(joint(0), at(10)));
-    EXPECT_FALSE(assembler.ingest(joint(1), at(9)));
-    auto invalid = joint(1);
+    EXPECT_FALSE(assembler.ingest(joint({0}), at(10)));
+    EXPECT_FALSE(assembler.ingest(joint({1}), at(9)));
+    auto invalid = joint({1});
     invalid.block_index = 4;
     EXPECT_FALSE(assembler.ingest(invalid, at(11)));
-    invalid = joint(1);
+    invalid = joint({1});
     invalid.count = 4;
     EXPECT_FALSE(assembler.ingest(invalid, at(11)));
-    invalid = joint(1);
+    invalid = joint({1});
     invalid.positions_degrees[0] = std::numeric_limits<float>::quiet_NaN();
     EXPECT_FALSE(assembler.ingest(invalid, at(11)));
-    invalid = joint(1);
+    invalid = joint({1});
     invalid.kind = FrameKind::version;
     EXPECT_FALSE(assembler.ingest(invalid, at(11)));
     EXPECT_EQ(assembler.pendingMask(), 1);
@@ -236,25 +269,25 @@ TEST(ArmSnapshot, MalformedDecodedRangesAndCountsDoNotAdvanceOrCorruptState) {
     SnapshotAssembler assembler;
     complete(assembler);
     const auto committed = assembler.latest();
-    EXPECT_FALSE(assembler.ingest(joint(0), at(10)));
+    EXPECT_FALSE(assembler.ingest(joint({0}), at(10)));
     for (const auto index : {kBlockCount, std::numeric_limits<std::size_t>::max()}) {
-        auto malformed = joint(1);
+        auto malformed = joint({1});
         malformed.block_index = index;
         EXPECT_FALSE(assembler.ingest(malformed, at(100)));
     }
     for (const auto count :
          {std::size_t{0}, std::size_t{4}, std::numeric_limits<std::size_t>::max()}) {
-        auto malformed = joint(1);
+        auto malformed = joint({1});
         malformed.count = count;
         EXPECT_FALSE(assembler.ingest(malformed, at(100)));
     }
     for (const auto value : {std::numeric_limits<float>::infinity(),
                              -std::numeric_limits<float>::infinity(), -180.1f, 180.0f}) {
-        auto malformed = joint(1);
+        auto malformed = joint({1});
         malformed.positions_degrees[0] = value;
         EXPECT_FALSE(assembler.ingest(malformed, at(100)));
     }
-    auto malformed = joint(2);
+    auto malformed = joint({2});
     malformed.fault_bits = 1;
     EXPECT_FALSE(assembler.ingest(malformed, at(100)));
     EXPECT_EQ(assembler.pendingMask(), 1);
@@ -262,9 +295,9 @@ TEST(ArmSnapshot, MalformedDecodedRangesAndCountsDoNotAdvanceOrCorruptState) {
     EXPECT_EQ(assembler.latest().received_at, committed.received_at);
     EXPECT_EQ(assembler.latest().positions_degrees, committed.positions_degrees);
     // Invalid input timestamp 100 must not move the receive clock forward.
-    EXPECT_FALSE(assembler.ingest(joint(1), at(11)));
-    EXPECT_FALSE(assembler.ingest(joint(2), at(12)));
-    EXPECT_TRUE(assembler.ingest(joint(3), at(13)));
+    EXPECT_FALSE(assembler.ingest(joint({1}), at(11)));
+    EXPECT_FALSE(assembler.ingest(joint({2}), at(12)));
+    EXPECT_TRUE(assembler.ingest(joint({3}), at(13)));
     EXPECT_EQ(assembler.latest().received_at[0], at(10));
     EXPECT_EQ(assembler.latest().received_at[3], at(13));
     auto incomplete = assembler.latest();
@@ -275,14 +308,14 @@ TEST(ArmSnapshot, MalformedDecodedRangesAndCountsDoNotAdvanceOrCorruptState) {
 TEST(ArmSnapshot, DoesNotFreezeAtTheAngularBoundaryOrRejectInitialMinus180) {
     SnapshotAssembler assembler;
     for (std::size_t block = 0; block < 4; ++block) {
-        assembler.ingest(joint(block, 1800), at(static_cast<int>(block)));
+        assembler.ingest(joint({block, 1800}), at(static_cast<int>(block)));
     }
     EXPECT_FLOAT_EQ(assembler.latest().positions_degrees[0], -180.0f);
     for (std::size_t block = 0; block < 4; ++block) {
-        assembler.ingest(joint(block, 1790), at(10 + static_cast<int>(block)));
+        assembler.ingest(joint({block, 1790}), at(10 + static_cast<int>(block)));
     }
     for (std::size_t block = 0; block < 4; ++block) {
-        assembler.ingest(joint(block, -1790), at(20 + static_cast<int>(block)));
+        assembler.ingest(joint({block, -1790}), at(20 + static_cast<int>(block)));
     }
     EXPECT_FLOAT_EQ(assembler.latest().positions_degrees[0], -179.0f);
 }
@@ -294,19 +327,22 @@ TEST(ArmSnapshot, ValidatesSkewAndAllowsExactlyTheConfiguredBoundary) {
     EXPECT_TRUE(assembler.latest().valid);
     SnapshotAssembler simultaneous(0ms);
     for (std::size_t i = 0; i < kBlockCount; ++i) {
-        EXPECT_EQ(simultaneous.ingest(joint(i), at(0)), i == kBlockCount - 1);
+        EXPECT_EQ(simultaneous.ingest(joint({i}), at(0)), i == kBlockCount - 1);
     }
 }
 
 } // namespace
 
 TEST(ArmProtocol, PreservesLegacyPaddedFaultReply) {
-    auto frame = jointFrame(1);
+    auto frame = jointFrame({1});
     frame.dlc = 8;
     frame.data[6] = 0x55;
     frame.data[7] = 0xff;
     const auto result = decodeFrame(frame);
-    ASSERT_TRUE(result.frame);
+    if (!result.frame) {
+        ADD_FAILURE() << "Expected padded joint reply to decode";
+        return;
+    }
     EXPECT_EQ(result.frame->fault_bits, 0x55);
     EXPECT_FLOAT_EQ(result.frame->positions_degrees[0], 10.0f);
 }

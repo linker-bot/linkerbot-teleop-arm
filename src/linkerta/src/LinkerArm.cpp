@@ -1,5 +1,6 @@
 #include "LinkerArm.h"
 #include "SessionFactory.h"
+#include <cstdio>
 
 #include <algorithm>
 #include <iostream>
@@ -65,7 +66,8 @@ private:
     LinkerArm &arm_;
 };
 
-LinkerArm::LinkerArm(std::string device) : LinkerArm(discoverArmSession(device), ownedOptions()) {}
+LinkerArm::LinkerArm(const std::string &device)
+    : LinkerArm(discoverArmSession(device), ownedOptions()) {}
 LinkerArm::LinkerArm(const std::string &name, int bitrate)
     : LinkerArm(makeSocketSession(name, bitrate), ownedOptions()) {}
 LinkerArm::LinkerArm(std::shared_ptr<transport::Session> session)
@@ -97,6 +99,8 @@ LinkerArm::LinkerArm(std::shared_ptr<transport::Session> session, SessionOptions
             try {
                 session_->close();
             } catch (...) {
+                std::fputs("LinkerArm: failed to close Session after construction failure\n",
+                           stderr);
             }
         }
         throw;
@@ -108,11 +112,13 @@ LinkerArm::~LinkerArm() {
     try {
         session_->cancel_endpoint(options_.endpoint);
     } catch (...) {
+        std::fputs("LinkerArm: failed to cancel endpoint during destruction\n", stderr);
     }
     if (options_.own_session) {
         try {
             session_->close();
         } catch (...) {
+            std::fputs("LinkerArm: failed to close owned Session during destruction\n", stderr);
         }
     }
 }

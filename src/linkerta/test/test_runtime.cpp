@@ -213,7 +213,10 @@ TEST(Runtime, DestructionPreservesOtherRoutesAndEndpointsOnSharedSession) {
     message.data[0] = 42;
     rig.fake->inject(message);
     const auto received = other->receive_until(linkerbot::transport::Clock::now() + 1s);
-    ASSERT_TRUE(received);
+    if (!received) {
+        ADD_FAILURE() << "Expected received frame";
+        return;
+    }
     EXPECT_EQ(received->message.data[0], 42);
     linkerbot::transport::SendOptions options;
     options.endpoint = "other-device";
