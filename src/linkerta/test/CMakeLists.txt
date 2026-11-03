@@ -26,6 +26,8 @@ set(TEST_SOURCES
     test_linkerarm.cpp
     mock_canbus.cpp
     test_main.cpp
+    test_canbus_io.cpp
+    test_node_config.cpp
 )
 
 # 创建测试可执行文件
