@@ -134,3 +134,11 @@ TEST(Runtime, BlockingWriteCannotTurnExpiredReadIntoSuccess) {
     LinkerArm::LinkerArm arm(std::move(fake));
     EXPECT_THROW(arm.readJointState(15ms), std::runtime_error);
 }
+
+TEST(Runtime, RejectsUnrepresentableTimeoutBeforeSending) {
+    auto fake = std::make_unique<Fake>();
+    auto *raw = fake.get();
+    LinkerArm::LinkerArm arm(std::move(fake));
+    EXPECT_THROW(arm.readJointState(std::chrono::milliseconds::max()), std::invalid_argument);
+    EXPECT_EQ(raw->queries, 0);
+}

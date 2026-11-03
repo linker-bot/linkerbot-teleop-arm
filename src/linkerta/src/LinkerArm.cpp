@@ -26,7 +26,16 @@ Protocol::ArmSnapshot LinkerArm::latestSnapshot() {
 Protocol::ArmSnapshot LinkerArm::readJointState(std::chrono::milliseconds timeout) {
     if (timeout.count() <= 0)
         throw std::invalid_argument("timeout must be positive");
-    auto deadline = std::chrono::steady_clock::now() + timeout;
+    const auto now = Protocol::Clock::now();
+    // Reject before converting milliseconds to the clock's finer tick unit.
+    const auto largest_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(Protocol::Clock::duration::max());
+    if (timeout >= largest_ms)
+        throw std::invalid_argument("timeout exceeds the clock range");
+    const auto wait = std::chrono::duration_cast<Protocol::Clock::duration>(timeout);
+    if (now.time_since_epoch() > Protocol::Clock::duration::max() - wait)
+        throw std::invalid_argument("timeout exceeds the deadline range");
+    const auto deadline = now + wait;
     std::unique_lock<std::timed_mutex> request(request_mutex_, std::defer_lock);
     if (!request.try_lock_until(deadline))
         throw std::runtime_error("joint request queue timeout");

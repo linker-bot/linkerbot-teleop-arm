@@ -4,7 +4,9 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/string.hpp"
 #include <chrono>
+#include <iostream>
 #include <signal.h>
+#include <sstream>
 
 using namespace std::chrono_literals;
 
