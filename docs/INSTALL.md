@@ -20,7 +20,7 @@ target_link_libraries(my_app PRIVATE linkerta::core)
 
 ROS2 已在 Humble 验证。先 source `/opt/ros/humble/setup.bash`，再执行
 `./build.sh ros2`；`./build.sh core` 不要求 ROS2 或 colcon。
-`./startup.sh` 加载工作区环境并启动 launch，退出码和信号直接传给节点。
+`./startup.sh` 加载工作区环境并用 `exec` 启动 `ros2 launch`。脚本不拦截 launch 的退出码；节点信号、退出和默认 respawn 由 launch 管理，不保证节点退出码直接成为脚本退出码。
 脚本不配置网卡、不修改权限、不自动标定。
 
 ## CAN 显式部署
@@ -50,7 +50,7 @@ linkerta --interface can0 --bitrate 1000000 --rate-hz 10 --timeout-ms 250 --coun
 
 标准 ROS `/joint_states` 使用弧度；旧左右控制话题继续使用度，并可禁用。
 核心库位置使用度。协议长度、未知故障位和版本编码限制见 [PROTOCOL.md](PROTOCOL.md)。
-标定无设备完成 ACK，不自动重放，不能把后端接受发送等同于设备完成。
+标定当前未实现或验证设备完成 ACK，不自动重放，不能把后端接受发送等同于设备完成。
 
 本仓库 package.xml 声明 Apache-2.0，但当前未提供顶层 LICENSE 正文；
 分发前需维护者补齐许可证文件。linkerbot-transport-cpp 的 LICENSE 为 MIT；

@@ -4,6 +4,8 @@
 核心复用 linkerbot-transport-cpp Session；协议解码和四帧快照组装不依赖 ROS。
 Linux 支持 SocketCAN 硬件；macOS 用于核心构建与测试。ROS2 CI 验证 Humble。
 
+完整导航见 [文档索引](docs/README.md)，接口与证据分别见 [C++ API](docs/API.md)、[ROS2](docs/ROS2.md) 和 [验证边界](docs/VALIDATION.md)。
+
 ## 构建和安装
 
 完整说明见 [安装与部署](docs/INSTALL.md)。从仓库根目录执行：
@@ -26,7 +28,7 @@ const auto snapshot = arm.readJointState();
 // snapshot.positions_degrees 是完整快照，单位为度；超时会抛出异常。
 ```
 
-头文件安装路径以实际导出接口为准；其他 API 与生命周期见 [Session 迁移契约](docs/SESSION.md)。
+头文件安装在 `<prefix>/include/linkerta`；其他 API 与生命周期见 [C++ API](docs/API.md) 和 [Session 迁移契约](docs/SESSION.md)。
 `latestSnapshot()` 只读缓存，调用方必须检查 `valid` 和 `isFresh()`；首次未就绪的零值不是测量。
 
 ## 配置 CAN 和命令行
@@ -76,7 +78,7 @@ source /opt/ros/humble/setup.bash
 模拟时钟暂停、倍率和跳变会影响映射；负值钳制为零。
 
 `~/calibrate_once` 使用 `std_srvs/srv/Trigger`。只有显式允许时才排队一次命令，每个进程最多尝试一次，
-即使发送失败也不自动重试。由于协议没有完成 ACK，响应 `success=false` 并在 message/诊断说明状态；
+即使发送失败也不自动重试。由于当前未实现或验证设备完成 ACK，响应 `success=false` 并在 message/诊断说明状态；
 它不等于设备标定成功。重启不会自动发送标定。
 
 ## 协议、测试和限制
