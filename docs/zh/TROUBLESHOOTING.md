@@ -17,7 +17,7 @@ cmake --version
 先 `source /opt/ros/humble/setup.bash`，再 `./build.sh ros2`。
 项目使用 Humble 验证。若机器装有多套 ROS，检查当前环境是否混入其他发行版的安装前缀。
 
-找不到 `linkerbot-comm` 时，确认固定依赖能下载，或在离线环境安装依赖并正确设置
+找不到 `linkerbot-transport` 时，确认固定依赖能下载，或在离线环境安装依赖并正确设置
 `CMAKE_PREFIX_PATH`。找不到 GoogleTest 时检查测试依赖，不要取消测试作为修复。
 使用 `find_package` 的下游要指向安装前缀，而非源码或旧 build 目录。
 安装和干净目录消费说明见 [INSTALL.md](INSTALL.md)。

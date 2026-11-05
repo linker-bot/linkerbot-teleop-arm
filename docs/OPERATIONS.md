@@ -6,7 +6,7 @@
 
 ## Record versions and installation sources
 
-Before upgrading, record the application commit, CMake configuration, compiler, ROS distribution, and transport installation source. The source fallback pins a transport commit in CMake. `find_package(linkerbot-comm 0.3)` instead uses an installed package and checks only a minimum version; that package need not match the fallback commit. Confirm the package actually found and run installed-consumer and integration tests.
+Before upgrading, record the application commit, CMake configuration, compiler, ROS distribution, and transport installation source. The source fallback pins a transport commit in CMake. `find_package(linkerbot-transport 0.3.3)` instead uses an installed package and checks only a minimum version; that package need not match the fallback commit. Confirm the package actually found and run installed-consumer and integration tests.
 
 Install the new build into a separate prefix to avoid mixing library and header versions. Stop the old node, switch installation environments, then start one instance and check its version, diagnostics, and fresh snapshots. Roll back using the entire previous prefix and matching configuration, not a single binary. The program does not configure interface bitrate or calibrate automatically after restarting.
 

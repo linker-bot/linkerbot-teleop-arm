@@ -6,7 +6,7 @@
 
 ## 固定版本与安装来源
 
-升级前记录应用提交、CMake 配置、编译器、ROS 发行版，以及 transport 的安装来源。源码 fallback 在 CMake 中固定 transport 提交；`find_package(linkerbot-comm 0.3)` 使用环境中已安装的包，它只检查版本下限，不保证所找到的包与 fallback 固定提交相同。升级前核对实际找到的包，并运行安装消费和集成测试。
+升级前记录应用提交、CMake 配置、编译器、ROS 发行版，以及 transport 的安装来源。源码 fallback 在 CMake 中固定 transport 提交；`find_package(linkerbot-transport 0.3.3)` 使用环境中已安装的包，它只检查版本下限，不保证所找到的包与 fallback 固定提交相同。升级前核对实际找到的包，并运行安装消费和集成测试。
 
 把新构建安装到独立 prefix，避免把不同版本库和头文件混合覆盖。停止旧节点、切换安装环境，再启动一个实例验证版本、诊断和新鲜快照。回滚时使用完整的上一安装 prefix 和对应配置，不仅替换单个二进制。程序不会自动修改网卡 bitrate，也不会在重启后自动标定。
 
