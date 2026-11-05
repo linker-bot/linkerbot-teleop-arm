@@ -1,8 +1,8 @@
-# Linkerhand Tele Arm
+# LinkerBot Teleoperation Arm
 
 English · [简体中文](README.zh-CN.md)
 
-[![C++ Report Card](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml)
+[![C++ Report Card](https://github.com/linker-bot/linkerbot-teleop-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/linker-bot/linkerbot-teleop-arm/actions/workflows/cppreportcard.yml)
 
 Read 14 joints from a dual-arm device over classic SocketCAN. The project provides
 a C++17 core library, a CLI and a ROS2 node. Communication uses
@@ -11,6 +11,13 @@ Linux provides hardware I/O. macOS runs core builds and tests; ROS2 CI tests Hum
 
 Start with the commands below. The [documentation index](docs/README.md) covers
 API usage, ROS2, troubleshooting and validation.
+
+## Project naming and compatibility
+
+The repository is named `linkerbot-teleop-arm`. Existing integration names remain
+`linkerta`: the CMake and ROS2 packages, `linkerta::core`, CLI and node names,
+header and installation paths, and `LINKERTA_*` options are unchanged. Existing
+launch commands, ROS topics, services and configuration keys remain supported.
 
 ## Build and install
 

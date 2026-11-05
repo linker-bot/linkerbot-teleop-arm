@@ -14,7 +14,7 @@ PR8 合并前的固定证据提交为 `3fa95b4e90e76b27a2d556950f64b0a05ba359ca`
 - ROS2 colcon 汇总 73 项、零错误/失败/跳过；另对四项生命周期与退出测试各重复三次。
 - 基线工具测试启用时，Linux 62 项、macOS 57 项；覆盖缺回复统计、非整数成功率精度、输出防覆盖及 SIGTERM 部分结果完整性。
 
-这些数字对应上述固定提交。后续用例可能增减，查看新版本时应核对该提交在 [Actions](https://github.com/linker-bot/linkerhand-tele-arm/actions) 中的结果。
+这些数字对应上述固定提交。后续用例可能增减，查看新版本时应核对该提交在 [Actions](https://github.com/linker-bot/linkerbot-teleop-arm/actions) 中的结果。
 
 ## 仍需实机验证
 

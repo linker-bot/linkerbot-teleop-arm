@@ -2,7 +2,7 @@
 
 [English](THIRD_PARTY_NOTICES.md) · 简体中文
 
-Linkerhand Tele Arm 使用 [Apache-2.0](LICENSE)。依赖保留各自的许可证和版权声明。
+LinkerBot Teleoperation Arm 使用 [Apache-2.0](LICENSE)。依赖保留各自的许可证和版权声明。
 
 ## linkerbot-transport-cpp
 
