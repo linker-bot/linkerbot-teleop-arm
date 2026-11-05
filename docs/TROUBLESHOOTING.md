@@ -15,7 +15,7 @@ cmake --version
 
 The project requires CMake 3.18+, C++17, and thread support. Only ROS2 mode requires ament, colcon, and ROS message packages. Source `/opt/ros/humble/setup.bash`, then run `./build.sh ros2`. Validation uses Humble; if several ROS distributions are installed, check that the environment does not mix their prefixes.
 
-If `linkerbot-comm` is missing, check that the pinned dependency can be downloaded, or install it offline and set `CMAKE_PREFIX_PATH` correctly. If GoogleTest is missing, check test dependencies rather than disabling tests. Downstream `find_package` calls must point to installation prefixes, not source or old build directories. See [INSTALL.md](INSTALL.md) for installation and clean consumer builds.
+If `linkerbot-transport` is missing, check that the pinned dependency can be downloaded, or install it offline and set `CMAKE_PREFIX_PATH` correctly. If GoogleTest is missing, check test dependencies rather than disabling tests. Downstream `find_package` calls must point to installation prefixes, not source or old build directories. See [INSTALL.md](INSTALL.md) for installation and clean consumer builds.
 
 Keep the first complete compiler diagnostic, compiler version, and build command. The project already links Threads. Identify the failing target and fix the cause; reducing warning levels hides information.
 

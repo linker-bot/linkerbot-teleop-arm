@@ -38,18 +38,20 @@ include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 option(LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS "Download missing dependencies" ON)
-find_package(linkerbot-comm 0.3 CONFIG QUIET)
-if(NOT TARGET linkerbot::comm)
+find_package(linkerbot-transport 0.3.3 CONFIG QUIET)
+if(NOT TARGET linkerbot::can)
     if(NOT LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS AND NOT FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT)
-        message(FATAL_ERROR "linkerbot-comm missing; install it or set FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT")
+        message(FATAL_ERROR "linkerbot-transport missing; install it or set FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT")
     endif()
     include(FetchContent)
-    set(LINKERBOT_COMM_BUILD_TESTS OFF)
-    set(LINKERBOT_COMM_BUILD_EXAMPLES OFF)
-    set(LINKERBOT_COMM_BUILD_BENCHMARKS OFF)
+    set(LINKERBOT_TRANSPORT_BUILD_TESTS OFF)
+    set(LINKERBOT_TRANSPORT_BUILD_EXAMPLES OFF)
+    set(LINKERBOT_TRANSPORT_BUILD_BENCHMARKS OFF)
+    set(LINKERBOT_TRANSPORT_ENABLE_SERIAL OFF)
+    set(LINKERBOT_TRANSPORT_ENABLE_MODBUS OFF)
     FetchContent_Declare(linkerbot_transport
-        GIT_REPOSITORY https://github.com/soulteary/linkerbot-transport-cpp.git
-        GIT_TAG e514b832e09ecd60a56d2c67e39c54285793fff8
+        GIT_REPOSITORY https://github.com/linker-bot/linkerbot-transport-cpp.git
+        GIT_TAG 53263a33ba06137f99794f7f5e897695d020d917
     )
     FetchContent_MakeAvailable(linkerbot_transport)
 endif()
@@ -84,7 +86,7 @@ target_compile_features(linkerta_core PUBLIC cxx_std_17)
 target_include_directories(linkerta_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(linkerta_core PUBLIC Threads::Threads linkerbot::comm)
+target_link_libraries(linkerta_core PUBLIC Threads::Threads linkerbot::can)
 if(APPLE)
     set(LINKERTA_LIBRARY_RPATH "@loader_path")
     set(LINKERTA_BINARY_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")

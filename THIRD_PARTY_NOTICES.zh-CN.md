@@ -6,7 +6,7 @@ LinkerBot Teleoperation Arm 使用 [Apache-2.0](LICENSE)。依赖保留各自的
 
 ## linkerbot-transport-cpp
 
-核心库 `linkerta::core` 链接此运行时传输库。使用 [MIT 许可证](LICENSES/linkerbot-transport-cpp.MIT.txt)，并保留[上游 NOTICE](LICENSES/linkerbot-transport-cpp.NOTICE.txt)。源码 fallback 固定在 [e514b832e09ecd60a56d2c67e39c54285793fff8](https://github.com/soulteary/linkerbot-transport-cpp/tree/e514b832e09ecd60a56d2c67e39c54285793fff8)，上述文件逐字复制自该提交。
+核心库 `linkerta::core` 链接此运行时传输库。使用 [MIT 许可证](LICENSES/linkerbot-transport-cpp.MIT.txt)，并保留[上游 NOTICE](LICENSES/linkerbot-transport-cpp.NOTICE.txt)。源码 fallback 固定在 [53263a33ba06137f99794f7f5e897695d020d917](https://github.com/linker-bot/linkerbot-transport-cpp/tree/53263a33ba06137f99794f7f5e897695d020d917)，上述文件逐字复制自该提交。
 
 已安装的 transport 可能不同于 fallback 版本，分发时保留实际所用包的声明。本项目的 fallback 构建不包含 transport 的测试和可选厂商二进制库。
 

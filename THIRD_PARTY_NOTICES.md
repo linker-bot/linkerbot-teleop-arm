@@ -10,7 +10,7 @@ their own licenses and copyright notices.
 - Role: runtime transport library, linked by `linkerta::core`.
 - License: [MIT](LICENSES/linkerbot-transport-cpp.MIT.txt).
 - Upstream notice: [NOTICE](LICENSES/linkerbot-transport-cpp.NOTICE.txt).
-- Pinned fallback source: [e514b832e09ecd60a56d2c67e39c54285793fff8](https://github.com/soulteary/linkerbot-transport-cpp/tree/e514b832e09ecd60a56d2c67e39c54285793fff8).
+- Pinned fallback source: [53263a33ba06137f99794f7f5e897695d020d917](https://github.com/linker-bot/linkerbot-transport-cpp/tree/53263a33ba06137f99794f7f5e897695d020d917).
 
 The files above are copied verbatim from that revision. An installed transport
 package may differ from the fallback revision; keep the notices supplied with

@@ -2,7 +2,7 @@
 
 # Building, installing, and deploying
 
-The core requires C++17, CMake 3.18+, Threads, and linkerbot-comm 0.3. Missing dependencies are downloaded from fixed commits by default. For offline builds, preinstall linkerbot-comm, set `CMAKE_PREFIX_PATH`, and use `LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF`. GoogleTest is needed only for test builds.
+The core requires C++17, CMake 3.18+, Threads, and linkerbot-transport 0.3.3. Missing dependencies are downloaded from fixed commits by default. For offline builds, preinstall linkerbot-transport, set `CMAKE_PREFIX_PATH`, and use `LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF`. GoogleTest is needed only for test builds.
 
 ```sh
 cmake -S src/linkerta -B build-core -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX="$PWD/install-core"
