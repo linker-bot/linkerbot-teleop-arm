@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 project(linkerta
     VERSION 2.0.0
     LANGUAGES CXX
-    DESCRIPTION "Linker Tele-Arm driver for robotic arm control"
+    DESCRIPTION "LinkerBot Teleoperation Arm C++ driver, CLI and optional ROS 2 integration"
 )
 
 # 检测系统架构

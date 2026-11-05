@@ -3,7 +3,7 @@
 <package format="3">
   <name>linkerta</name>
   <version>2.0.0</version>
-  <description>Linker TA arm with ROS 2</description>
+  <description>LinkerBot Teleoperation Arm joint-state driver with ROS 2 integration</description>
   <maintainer email="liangshaoteng2012@163.com">lst</maintainer>
   <license>Apache-2.0</license>
 

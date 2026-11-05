@@ -14,7 +14,7 @@ The fixed evidence commit before PR8 was merged is `3fa95b4e90e76b27a2d556950f64
 - ROS2 colcon reported 73 tests with no errors, failures, or skips; four lifecycle and shutdown tests were also repeated three times each.
 - With benchmark tests enabled: 62 tests on Linux and 57 on macOS, covering missing-response accounting, non-integer success-ratio precision, overwrite prevention, and partial-result integrity after SIGTERM.
 
-These counts apply to that commit. Tests may be added or removed later; check the relevant commit's results in [Actions](https://github.com/linker-bot/linkerhand-tele-arm/actions) when evaluating a newer version.
+These counts apply to that commit. Tests may be added or removed later; check the relevant commit's results in [Actions](https://github.com/linker-bot/linkerbot-teleop-arm/actions) when evaluating a newer version.
 
 ## Physical-device validation still needed
 

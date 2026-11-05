@@ -1,14 +1,20 @@
-# Linkerhand Tele Arm
+# LinkerBot Teleoperation Arm
 
 [English](README.md) · 简体中文
 
-[![C++ Report Card](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/linker-bot/linkerhand-tele-arm/actions/workflows/cppreportcard.yml)
+[![C++ Report Card](https://github.com/linker-bot/linkerbot-teleop-arm/actions/workflows/cppreportcard.yml/badge.svg)](https://github.com/linker-bot/linkerbot-teleop-arm/actions/workflows/cppreportcard.yml)
 
 通过 classic SocketCAN 读取双臂 14 个关节，提供 C++17 核心库、命令行工具和 ROS2 节点。
 通信由 linkerbot-transport-cpp 的 Session 处理，协议解码和快照组装不依赖 ROS。
 Linux 支持 SocketCAN 硬件；macOS 用于核心构建与测试。ROS2 CI 验证 Humble。
 
 第一次使用可以从下面的构建步骤开始。[文档索引](docs/zh/README.md)列出了 API、ROS2、排错和测试说明。
+
+## 项目命名与兼容性
+
+仓库名称为 `linkerbot-teleop-arm`。现有集成名称继续使用 `linkerta`：
+CMake 和 ROS2 包、`linkerta::core`、CLI 和节点名称、头文件与安装路径、
+`LINKERTA_*` 选项均保持不变。现有启动命令、ROS 话题、服务和配置键继续支持。
 
 ## 构建和安装
 
