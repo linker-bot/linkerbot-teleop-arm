@@ -38,7 +38,7 @@ include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 option(LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS "Download missing dependencies" ON)
-find_package(linkerbot-transport 0.3.3 CONFIG QUIET)
+find_package(linkerbot-transport 0.3.4 CONFIG QUIET)
 if(NOT TARGET linkerbot::can)
     if(NOT LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS AND NOT FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT)
         message(FATAL_ERROR "linkerbot-transport missing; install it or set FETCHCONTENT_SOURCE_DIR_LINKERBOT_TRANSPORT")
@@ -51,7 +51,7 @@ if(NOT TARGET linkerbot::can)
     set(LINKERBOT_TRANSPORT_ENABLE_MODBUS OFF)
     FetchContent_Declare(linkerbot_transport
         GIT_REPOSITORY https://github.com/linker-bot/linkerbot-transport-cpp.git
-        GIT_TAG 53263a33ba06137f99794f7f5e897695d020d917
+        GIT_TAG 0e190032d65ed0b315337b45b3779cf4f650ed68
     )
     FetchContent_MakeAvailable(linkerbot_transport)
 endif()

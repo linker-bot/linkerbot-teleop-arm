@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: linker-bot/linkerbot-transport-cpp
-          ref: 53263a33ba06137f99794f7f5e897695d020d917
+          ref: 0e190032d65ed0b315337b45b3779cf4f650ed68
           path: build-dependency-src
       - run: sudo apt-get update && sudo apt-get install -y libgtest-dev
       - name: Build and install the pinned transport package
@@ -85,6 +85,42 @@ jobs:
             -DFETCHCONTENT_FULLY_DISCONNECTED=ON
           cmake --build build-installed --parallel 2
           ctest --test-dir build-installed --output-on-failure --no-tests=error --timeout 60
+
+  released-dependency:
+    name: transport v0.3.4 / ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgtest-dev
+      - name: Download and verify the released transport SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=linkerbot-transport-0.3.4-Linux-${{ matrix.arch }}-ubuntu24.04-GNU13.3.0-libstdcxx-abi1-Release.tar.gz
+          url=https://github.com/linker-bot/linkerbot-transport-cpp/releases/download/v0.3.4
+          mkdir -p "$RUNNER_TEMP/transport-download" "$RUNNER_TEMP/transport-sdk"
+          cd "$RUNNER_TEMP/transport-download"
+          curl --fail --location --retry 3 --remote-name "$url/$archive"
+          curl --fail --location --retry 3 --remote-name "$url/$archive.sha256"
+          sha256sum --check "$archive.sha256"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/transport-sdk" --strip-components=1
+      - name: Build and test without dependency downloads
+        run: |
+          cmake -S src/linkerta -B build-released \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/transport-sdk" \
+            -DLINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF \
+            -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+          cmake --build build-released --parallel 2
+          ctest --test-dir build-released --output-on-failure --no-tests=error --timeout 60
 
   vcan:
     runs-on: ubuntu-24.04

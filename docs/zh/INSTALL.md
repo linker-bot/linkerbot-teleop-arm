@@ -2,7 +2,7 @@
 
 # 构建、安装和部署
 
-核心库要求 C++17、CMake 3.18+、Threads 和 linkerbot-transport 0.3.3。
+核心库要求 C++17、CMake 3.18+、Threads 和 linkerbot-transport 0.3.4。
 默认缺失依赖会从固定提交下载；离线环境应预安装 linkerbot-transport 并设置
 `CMAKE_PREFIX_PATH`、`LINKERTA_ALLOW_DEPENDENCY_DOWNLOADS=OFF`。GoogleTest 只在测试构建需要。
 
