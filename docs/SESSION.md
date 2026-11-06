@@ -9,10 +9,12 @@ opens classic CAN; this protocol does not accept CAN FD frames.
 ## Dependency and installation
 
 CMake first searches for an installed `linkerbot-transport` package compatible with
-version 0.3.3. If none is found, it fetches commit
-`53263a33ba06137f99794f7f5e897695d020d917`. An installed package must contain the
-Session exception-publication fix and terminal-failure handling from that revision; the runtime regression
-checks this behavior. The version constraint alone does not identify the fix.
+version 0.3.4. If none is found, it fetches commit
+`0e190032d65ed0b315337b45b3779cf4f650ed68`. An installed package must contain the
+v0.3.4 Session behavior; runtime regressions check exception publication and terminal failures.
+Rebuild the driver and downstream consumers with matching transport headers and libraries.
+Public transport structures have grown; binary ABI compatibility with older SDKs is not promised.
+This dependency update does not establish new physical hardware acceptance.
 Dependency tests, examples and benchmarks are disabled in the fallback build.
 
 For a network-free source build, pass these CMake options with existing sources:
