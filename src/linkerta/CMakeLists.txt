@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(linkerta
-    VERSION 2.0.0
+    VERSION 2.0.1
     LANGUAGES CXX
     DESCRIPTION "LinkerBot Teleoperation Arm C++ driver, CLI and optional ROS 2 integration"
 )
